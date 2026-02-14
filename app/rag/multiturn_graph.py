@@ -232,6 +232,10 @@ def generate(state: MultiTurnRAGState) -> dict:
     history = state.get("chat_history", "")
     question = state["question"]
 
+    # Escape curly braces so ChatPromptTemplate doesn't treat them as variables
+    context_escaped = context.replace("{", "{{").replace("}", "}}")
+    history_escaped = history.replace("{", "{{").replace("}", "}}")
+
     # Build system prompt with Chain-of-Thought instructions
     system_msg = (
         "You are a helpful assistant engaged in a multi-turn conversation.\n\n"
@@ -244,10 +248,10 @@ def generate(state: MultiTurnRAGState) -> dict:
         "5. Be concise but thorough.\n\n"
     )
 
-    if history.strip():
-        system_msg += f"## Conversation History\n{history}\n\n"
+    if history_escaped.strip():
+        system_msg += f"## Conversation History\n{history_escaped}\n\n"
 
-    system_msg += f"## Retrieved Documents\n{context}"
+    system_msg += f"## Retrieved Documents\n{context_escaped}"
 
     prompt = ChatPromptTemplate.from_messages(
         [
