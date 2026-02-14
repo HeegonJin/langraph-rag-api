@@ -1,0 +1,29 @@
+[project]
+name = "langraph-rag-api"
+version = "0.1.0"
+description = "A toy RAG API built with FastAPI, LangChain, LangGraph, llama.cpp and ChromaDB"
+requires-python = ">=3.11"
+dependencies = [
+    "chromadb>=0.6,<0.7",
+    "fastapi[standard]>=0.115,<0.116",
+    "langchain>=0.3,<0.4",
+    "langchain-community>=0.3,<0.4",
+    "langchain-openai>=0.3,<0.4",
+    "langfuse>=2,<3",
+    "langgraph>=0.2,<0.3",
+    "pypdf>=6.7.0",
+    "python-multipart>=0.0.0,<1",
+    "streamlit>=1.54.0",
+    "uvicorn[standard]>=0.34,<0.35",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8,<9",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.27",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
