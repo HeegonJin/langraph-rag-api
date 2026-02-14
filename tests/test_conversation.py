@@ -1,4 +1,4 @@
-"""Tests for Session, Turn, and ConversationStore."""
+"""Tests for Session, Turn, and Redis-backed ConversationStore."""
 
 import time
 
@@ -6,6 +6,21 @@ import pytest
 from langchain_core.documents import Document
 
 from app.rag.conversation import ConversationStore, Session, Turn
+
+
+# ── Fixtures ──────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture()
+def store():
+    """Create a ConversationStore that uses a test-only Redis DB (db=15).
+
+    Flushes the DB before each test to ensure isolation.
+    """
+    s = ConversationStore(redis_url="redis://localhost:6379/15", ttl_seconds=60)
+    s._redis.flushdb()
+    yield s
+    s._redis.flushdb()
 
 
 # ── Turn ──────────────────────────────────────────────────────────────────────
@@ -23,6 +38,14 @@ class TestTurn:
         t = Turn(role="assistant", content="hi")
         after = time.time()
         assert before <= t.timestamp <= after
+
+    def test_round_trip(self):
+        t = Turn(role="human", content="Q1", timestamp=1234.5)
+        d = t.to_dict()
+        t2 = Turn.from_dict(d)
+        assert t2.role == t.role
+        assert t2.content == t.content
+        assert t2.timestamp == t.timestamp
 
 
 # ── Session ───────────────────────────────────────────────────────────────────
@@ -134,79 +157,89 @@ class TestSession:
         assert isinstance(s.created_at, float)
 
 
-# ── ConversationStore ─────────────────────────────────────────────────────────
+# ── ConversationStore (Redis-backed) ──────────────────────────────────────────
 
 
 class TestConversationStore:
-    def test_get_or_create_new(self):
-        store = ConversationStore()
+    def test_get_or_create_new(self, store):
         session = store.get_or_create()
         assert isinstance(session, Session)
         assert len(session.session_id) > 0
 
-    def test_get_or_create_with_id(self):
-        store = ConversationStore()
+    def test_get_or_create_with_id(self, store):
         session = store.get_or_create("my-session")
         assert session.session_id == "my-session"
 
-    def test_get_or_create_returns_existing(self):
-        store = ConversationStore()
+    def test_get_or_create_returns_existing(self, store):
         s1 = store.get_or_create("s1")
         s1.add_human_turn("hi")
+        # Re-fetch should see the persisted turn
         s2 = store.get_or_create("s1")
-        assert s2 is s1
+        assert s2.session_id == s1.session_id
         assert len(s2.turns) == 1
 
-    def test_get_existing(self):
-        store = ConversationStore()
+    def test_get_existing(self, store):
         store.get_or_create("s1")
         assert store.get("s1") is not None
 
-    def test_get_nonexistent(self):
-        store = ConversationStore()
+    def test_get_nonexistent(self, store):
         assert store.get("nope") is None
 
-    def test_clear_session_existing(self):
-        store = ConversationStore()
+    def test_clear_session_existing(self, store):
         s = store.get_or_create("s1")
         s.add_human_turn("hi")
         assert store.clear_session("s1") is True
-        assert len(s.turns) == 0
+        reloaded = store.get("s1")
+        assert len(reloaded.turns) == 0
 
-    def test_clear_session_nonexistent(self):
-        store = ConversationStore()
+    def test_clear_session_nonexistent(self, store):
         assert store.clear_session("nope") is False
 
-    def test_delete_session(self):
-        store = ConversationStore()
+    def test_delete_session(self, store):
         store.get_or_create("s1")
         assert store.delete_session("s1") is True
         assert store.get("s1") is None
 
-    def test_delete_session_nonexistent(self):
-        store = ConversationStore()
+    def test_delete_session_nonexistent(self, store):
         assert store.delete_session("nope") is False
 
-    def test_list_sessions(self):
-        store = ConversationStore()
+    def test_list_sessions(self, store):
         store.get_or_create("a")
         store.get_or_create("b")
         store.get_or_create("c")
         sessions = store.list_sessions()
         assert set(sessions) == {"a", "b", "c"}
 
-    def test_list_sessions_empty(self):
-        store = ConversationStore()
+    def test_list_sessions_empty(self, store):
         assert store.list_sessions() == []
 
-    def test_eviction_on_max_sessions(self):
-        store = ConversationStore(max_sessions=2, ttl_seconds=0)
-        # Creating 2 sessions fills the store
-        s1 = store.get_or_create("s1")
-        s2 = store.get_or_create("s2")
-        # Both have ttl=0, so they're "stale" immediately
-        # Creating a third should trigger eviction
-        time.sleep(0.01)
-        s3 = store.get_or_create("s3")
-        # s1 and s2 should have been evicted
-        assert store.get("s3") is not None
+    def test_session_persists_turns(self, store):
+        """Verify turns survive a round-trip through Redis."""
+        s = store.get_or_create("persist-test")
+        s.add_human_turn("Hello")
+        s.add_assistant_turn("Hi there!")
+
+        reloaded = store.get("persist-test")
+        assert len(reloaded.turns) == 2
+        assert reloaded.turns[0].role == "human"
+        assert reloaded.turns[0].content == "Hello"
+        assert reloaded.turns[1].content == "Hi there!"
+
+    def test_session_persists_cached_documents(self, store):
+        """Verify cached documents survive a round-trip through Redis."""
+        s = store.get_or_create("doc-test")
+        docs = [Document(page_content="Doc A"), Document(page_content="Doc B")]
+        s.update_cached_documents(docs)
+
+        reloaded = store.get("doc-test")
+        assert len(reloaded.cached_documents) == 2
+        assert reloaded.cached_documents[0].page_content == "Doc A"
+
+    def test_ttl_expiry(self, store):
+        """Sessions with a short TTL should expire automatically."""
+        short_ttl_store = ConversationStore(
+            redis_url="redis://localhost:6379/15", ttl_seconds=1,
+        )
+        short_ttl_store.get_or_create("expire-me")
+        time.sleep(1.5)
+        assert short_ttl_store.get("expire-me") is None

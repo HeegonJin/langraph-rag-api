@@ -9,15 +9,15 @@ Supports:
 """
 
 import logging
-from pathlib import Path
 
 import streamlit as st
 
-from app.config import SAMPLE_DATA_DIR, UPLOAD_DIR
+from app.config import UPLOAD_DIR
 from app.rag.conversation import conversation_store
 from app.rag.graph import rag_graph
 from app.rag.ingestion import ingest_file
 from app.rag.multiturn_graph import multiturn_rag_graph
+from app.rag.sample_ingest import auto_ingest_sample_data
 from app.rag.tracing import invoke_graph_with_tracing
 
 logger = logging.getLogger(__name__)
@@ -47,36 +47,9 @@ if "sample_ingested" not in st.session_state:
 
 # ── Auto-ingest sample_data/ on first run ────────────────────────────────────
 
-def _auto_ingest_sample_data():
-    """Ingest files from sample_data/ once per Streamlit session."""
-    marker = Path("chroma_data/.sample_ingested")
-    if marker.exists():
-        return  # already done
-
-    if not SAMPLE_DATA_DIR.is_dir():
-        return
-
-    supported = {".pdf", ".txt", ".md", ".csv"}
-    files = [f for f in SAMPLE_DATA_DIR.iterdir() if f.suffix.lower() in supported]
-    if not files:
-        return
-
-    total_chunks = 0
-    for filepath in files:
-        try:
-            n = ingest_file(filepath)
-            total_chunks += n
-            logger.info("Auto-ingested %s → %d chunks", filepath.name, n)
-        except Exception:
-            logger.exception("Failed to auto-ingest %s", filepath.name)
-
-    marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text(f"Ingested {len(files)} files, {total_chunks} chunks\n")
-
-
 if not st.session_state.sample_ingested:
     with st.spinner("Auto-ingesting sample data..."):
-        _auto_ingest_sample_data()
+        auto_ingest_sample_data()
     st.session_state.sample_ingested = True
 
 # ── Sidebar: document upload & session controls ──────────────────────────────

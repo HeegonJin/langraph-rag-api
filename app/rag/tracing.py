@@ -142,13 +142,21 @@ def create_trace(
 
 
 def flush():
-    """Flush any buffered Langfuse events (call at shutdown or after requests)."""
+    """Flush any buffered Langfuse events.
+
+    Uses a background thread so the calling request is not blocked.
+    """
     client = get_langfuse_client()
     if client:
-        try:
-            client.flush()
-        except Exception:
-            logger.exception("Failed to flush Langfuse")
+        import threading
+
+        def _do_flush():
+            try:
+                client.flush()
+            except Exception:
+                logger.exception("Failed to flush Langfuse")
+
+        threading.Thread(target=_do_flush, daemon=True).start()
 
 
 # ── Node-level tracing decorator ─────────────────────────────────────────────

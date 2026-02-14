@@ -20,7 +20,9 @@ Extends the basic RAG graph with multi-turn conversation capabilities:
 
 from __future__ import annotations
 
-from typing import Optional, TypedDict
+import re
+from functools import lru_cache
+from typing import TypedDict
 
 from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate
@@ -28,18 +30,10 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
 
 from app import config
+from app.rag.constants import NO_DOCS_ANSWER
 from app.rag.conversation import Session, conversation_store
-from app.rag.ingestion import get_retriever, retrieve_with_scores
+from app.rag.ingestion import retrieve_with_scores
 from app.rag.tracing import trace_node
-
-# ── Constants ─────────────────────────────────────────────────────────────────
-
-_NO_DOCS_ANSWER = (
-    "죄송합니다. 질문과 관련된 문서를 찾을 수 없습니다. "
-    "다른 질문을 하시거나, 관련 문서를 먼저 업로드해 주세요.\n"
-    "(No relevant documents were found for your question. "
-    "Please try a different question or upload a related document first.)"
-)
 
 # ── Graph state ───────────────────────────────────────────────────────────────
 
@@ -70,13 +64,22 @@ class MultiTurnRAGState(TypedDict, total=False):
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
+@lru_cache(maxsize=1)
 def _llm(temperature: float = 0) -> ChatOpenAI:
     return ChatOpenAI(
         model=config.LLAMA_CPP_MODEL,
         base_url=config.LLAMA_CPP_BASE_URL,
         api_key=config.LLAMA_CPP_API_KEY,
         temperature=temperature,
+        timeout=config.LLM_TIMEOUT,
     )
+
+
+# Heuristic patterns that short-circuit the LLM intent classifier
+_CLEAR_CONTEXT_PATTERNS = re.compile(
+    r"\b(초기화|clear|reset|start\s*over|다시\s*시작|리셋|없던\s*것으로)",
+    re.IGNORECASE,
+)
 
 
 def _get_session(state: MultiTurnRAGState) -> Session:
@@ -97,12 +100,21 @@ def classify_intent(state: MultiTurnRAGState) -> dict:
     """
     session = _get_session(state)
     history = session.get_history_text(max_turns=5)
+    question = state["question"]
 
     # If there's no history, it's always a new topic
     if not history.strip():
         return {
             "intent": "new_topic",
             "chat_history": "",
+        }
+
+    # Heuristic fast-path: skip LLM call for obvious clear_context requests
+    if _CLEAR_CONTEXT_PATTERNS.search(question):
+        session.last_intent = "clear_context"
+        return {
+            "intent": "clear_context",
+            "chat_history": history,
         }
 
     prompt = ChatPromptTemplate.from_messages(
@@ -115,6 +127,16 @@ def classify_intent(state: MultiTurnRAGState) -> dict:
                 "  follow_up    – continues or refines the current topic\n"
                 "  new_topic    – completely new subject\n"
                 "  clear_context – user explicitly wants to reset / start over\n\n"
+                "## Examples\n"
+                "History: User: 이번 주말 액션 영화 알려줘 / Assistant: 어벤져스, ...\n"
+                "User: 어벤져스 상영 시간 알려줘\n"
+                "→ follow_up\n\n"
+                "History: User: What is RAG? / Assistant: RAG stands for...\n"
+                "User: 오늘 날씨 어때?\n"
+                "→ new_topic\n\n"
+                "History: User: Tell me about Python / Assistant: Python is...\n"
+                "User: 초기화해줘\n"
+                "→ clear_context\n\n"
                 "Reply with ONLY one of: follow_up, new_topic, clear_context\n\n"
                 "Conversation history:\n{history}",
             ),
@@ -189,8 +211,8 @@ def clear_context(state: MultiTurnRAGState) -> dict:
     session.clear()
     return {
         "answer": "대화 맥락이 초기화되었습니다. 새로운 주제로 질문해 주세요! "
-        "(Document cache cleared. Conversation history is preserved — "
-        "you can refer back to earlier topics.)",
+        "(Conversation history and document cache have been cleared. "
+        "Please start a new topic.)",
         "documents": [],
         "grounded": True,
     }
@@ -243,7 +265,7 @@ def generate(state: MultiTurnRAGState) -> dict:
     """
     # No documents → nothing to generate from; skip LLM call
     if not state.get("documents"):
-        return {"answer": _NO_DOCS_ANSWER}
+        return {"answer": NO_DOCS_ANSWER}
 
     context = "\n\n---\n\n".join(doc.page_content for doc in state["documents"])
     history = state.get("chat_history", "")
@@ -262,7 +284,8 @@ def generate(state: MultiTurnRAGState) -> dict:
         "really need (consider their underlying intent).\n"
         "3. Use ONLY the retrieved documents below to formulate your answer.\n"
         "4. If the documents do not contain enough information, say so honestly.\n"
-        "5. Be concise but thorough.\n\n"
+        "5. Be concise but thorough.\n"
+        "6. **Always respond in the same language the user used in their question.**\n\n"
     )
 
     if history_escaped.strip():
@@ -306,10 +329,14 @@ def grade(state: MultiTurnRAGState) -> dict:
             (
                 "system",
                 "You are a grading assistant. Given some context documents and an "
-                "answer, reply with ONLY 'yes' or 'no' — is the answer grounded in "
-                "the documents?\n\nDocuments:\n{documents}\n\nAnswer:\n{answer}",
+                "answer, determine if the answer is grounded in the documents.\n\n"
+                "A grounded answer means:\n"
+                "- The main claims are supported by the document content\n"
+                "- No significant facts are fabricated beyond what the documents state\n\n"
+                "Reply with ONLY 'yes' or 'no'.\n\n"
+                "Documents:\n{documents}\n\nAnswer:\n{answer}",
             ),
-            ("human", "Is the answer grounded?"),
+            ("human", "Is the answer grounded in the documents?"),
         ]
     )
 
@@ -327,13 +354,24 @@ def grade(state: MultiTurnRAGState) -> dict:
 @trace_node("rewrite")
 def rewrite(state: MultiTurnRAGState) -> dict:
     """Rewrite the question to improve retrieval on retry."""
+    # Gather previously retrieved documents for context
+    prev_docs = state.get("documents", [])
+    doc_summary = ""
+    if prev_docs:
+        doc_summary = (
+            "\n\nThe following documents were retrieved but were NOT sufficient "
+            "to answer the question:\n"
+            + "\n---\n".join(d.page_content[:200] for d in prev_docs[:3])
+        )
+
     prompt = ChatPromptTemplate.from_messages(
         [
             (
                 "system",
                 "You are a question rewriter. Given the original question and "
                 "conversation context, rewrite the question to be more specific "
-                "so better documents can be found. Output ONLY the rewritten question.",
+                "so better documents can be found. Output ONLY the rewritten question."
+                + doc_summary,
             ),
             ("human", "{question}"),
         ]

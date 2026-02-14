@@ -27,6 +27,13 @@ CHUNK_OVERLAP: int = int(os.getenv("CHUNK_OVERLAP", "200"))
 # similarity score internally.  Set to 0.0 to disable threshold filtering.
 RETRIEVAL_SCORE_THRESHOLD: float = float(os.getenv("RETRIEVAL_SCORE_THRESHOLD", "0.4"))
 
+# ── LLM timeout ────────────────────────────────────────────────────────────────
+# Seconds to wait for an LLM response before timing out.
+LLM_TIMEOUT: float = float(os.getenv("LLM_TIMEOUT", "120"))
+
+# ── Redis ─────────────────────────────────────────────────────────────────────
+REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
 # ── Langfuse observability ────────────────────────────────────────────────────
 LANGFUSE_PUBLIC_KEY: str = os.getenv("LANGFUSE_PUBLIC_KEY", "")
 LANGFUSE_SECRET_KEY: str = os.getenv("LANGFUSE_SECRET_KEY", "")

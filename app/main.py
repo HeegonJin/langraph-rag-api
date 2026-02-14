@@ -2,7 +2,7 @@
 
 Supports both single-turn (/ask) and multi-turn (/chat) conversation modes.
 Multi-turn features include:
-  • Session-based conversation memory (대화 맥락 유지)
+  • Session-based conversation memory via Redis (대화 맥락 유지)
   • Intent classification (인텐트 분류) – follow_up / new_topic / clear_context
   • Query contextualization using chat history (질문 의도 파악)
   • Document deduplication across turns (정보 중복 처리 최소화)
@@ -10,13 +10,15 @@ Multi-turn features include:
   • Explicit context clearing (Clear Context / 대화 맥락 초기화)
 """
 
+import asyncio
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, UploadFile, HTTPException
 from fastapi.responses import RedirectResponse
 
-from app.config import SAMPLE_DATA_DIR, UPLOAD_DIR
+from app.config import UPLOAD_DIR
 from app.models import (
     AnswerResponse,
     ChatRequest,
@@ -31,14 +33,31 @@ from app.rag.conversation import conversation_store
 from app.rag.graph import rag_graph
 from app.rag.ingestion import ingest_file
 from app.rag.multiturn_graph import multiturn_rag_graph
+from app.rag.sample_ingest import auto_ingest_sample_data
 from app.rag.tracing import flush as langfuse_flush, invoke_graph_with_tracing
+
+logger = logging.getLogger(__name__)
+
+
+# ── Lifespan (replaces deprecated on_event) ──────────────────────────────────
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup / shutdown lifecycle for the FastAPI application."""
+    # Startup: auto-ingest sample data (run in thread to avoid blocking)
+    await asyncio.to_thread(auto_ingest_sample_data)
+    yield
+    # Shutdown: flush Langfuse
+    langfuse_flush()
+
 
 app = FastAPI(
     title="LangGraph Multi-Turn RAG API",
     description=(
         "Upload documents, then ask questions in single-turn or multi-turn mode.\n\n"
         "**Multi-turn features:**\n"
-        "- 🔄 Session-based conversation memory\n"
+        "- 🔄 Session-based conversation memory (Redis)\n"
         "- 🎯 Intent classification (follow-up / new topic / clear context)\n"
         "- 📝 Query contextualization using chat history\n"
         "- 📚 Document deduplication across turns\n"
@@ -46,56 +65,9 @@ app = FastAPI(
         "- 🗑️ Explicit context clearing\n\n"
         "Uses llama.cpp (local LLM), ChromaDB, LangChain & LangGraph."
     ),
-    version="0.2.0",
+    version="0.3.0",
+    lifespan=lifespan,
 )
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Flush buffered Langfuse events on server shutdown."""
-    langfuse_flush()
-
-
-@app.on_event("startup")
-async def ingest_sample_data():
-    """Auto-ingest files from sample_data/ on first startup.
-
-    Skips files that have already been ingested (tracked via a marker file
-    in chroma_data/).
-    """
-    logger = logging.getLogger("app.startup")
-    marker = Path("chroma_data/.sample_ingested")
-
-    if marker.exists():
-        logger.info("Sample data already ingested – skipping")
-        return
-
-    if not SAMPLE_DATA_DIR.is_dir():
-        logger.info("No sample_data/ directory found – skipping")
-        return
-
-    supported = {".pdf", ".txt", ".md", ".csv"}
-    files = [f for f in SAMPLE_DATA_DIR.iterdir() if f.suffix.lower() in supported]
-
-    if not files:
-        logger.info("No supported files in sample_data/ – skipping")
-        return
-
-    total_chunks = 0
-    for filepath in files:
-        try:
-            n = ingest_file(filepath)
-            total_chunks += n
-            logger.info("Ingested %s → %d chunks", filepath.name, n)
-        except Exception:
-            logger.exception("Failed to ingest sample file %s", filepath.name)
-
-    # Write marker so we don't re-ingest on next restart
-    marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text(f"Ingested {len(files)} files, {total_chunks} chunks\n")
-    logger.info(
-        "Sample data ingestion complete: %d files, %d chunks", len(files), total_chunks
-    )
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -138,7 +110,8 @@ async def ask(body: QuestionRequest):
     This endpoint does *not* maintain conversation history.
     For multi-turn conversations, use ``POST /chat`` instead.
     """
-    result = invoke_graph_with_tracing(
+    result = await asyncio.to_thread(
+        invoke_graph_with_tracing,
         rag_graph,
         {
             "question": body.question,
@@ -195,7 +168,8 @@ async def chat(body: ChatRequest):
     # Get or create session
     session = conversation_store.get_or_create(body.session_id)
 
-    result = invoke_graph_with_tracing(
+    result = await asyncio.to_thread(
+        invoke_graph_with_tracing,
         multiturn_rag_graph,
         {
             "question": body.question,
@@ -219,12 +193,16 @@ async def chat(body: ChatRequest):
         doc.page_content[:300] for doc in result.get("documents", [])
     ]
 
+    # Re-load session from Redis to get the updated turn count after save_turn
+    updated_session = conversation_store.get(session.session_id)
+    turn_count = len(updated_session.turns) // 2 if updated_session else 0
+
     return ChatResponse(
         answer=result.get("answer", "No answer generated."),
         session_id=session.session_id,
         intent=result.get("intent", "new_topic"),
         source_documents=source_snippets,
-        turn_number=len(session.turns) // 2,  # each Q+A = 1 turn
+        turn_number=turn_count,
     )
 
 

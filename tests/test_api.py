@@ -19,19 +19,23 @@ from langchain_core.documents import Document
 # handler lists on the router.
 @pytest.fixture()
 def client():
-    """Create a TestClient with startup/shutdown events disabled."""
+    """Create a TestClient with lifespan disabled to avoid sample_data ingestion."""
     from app.main import app
 
-    original_startup = list(app.router.on_startup)
-    original_shutdown = list(app.router.on_shutdown)
-    app.router.on_startup.clear()
-    app.router.on_shutdown.clear()
+    # Override the lifespan to a no-op so tests don't require Redis or sample data
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def _noop_lifespan(app):
+        yield
+
+    original_lifespan = app.router.lifespan_context
+    app.router.lifespan_context = _noop_lifespan
     try:
         with TestClient(app, raise_server_exceptions=True) as c:
             yield c
     finally:
-        app.router.on_startup = original_startup
-        app.router.on_shutdown = original_shutdown
+        app.router.lifespan_context = original_lifespan
 
 
 # ── Health ────────────────────────────────────────────────────────────────────

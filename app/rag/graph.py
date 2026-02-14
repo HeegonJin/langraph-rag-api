@@ -14,24 +14,18 @@ keeping the project small enough to study.
 
 from __future__ import annotations
 
-from typing import Annotated, TypedDict
+from functools import lru_cache
+from typing import TypedDict
 
 from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
-from langgraph.graph.message import add_messages
 
 from app import config
-from app.rag.ingestion import get_retriever, retrieve_with_scores
+from app.rag.constants import NO_DOCS_ANSWER
+from app.rag.ingestion import retrieve_with_scores
 from app.rag.tracing import trace_node
-
-_NO_DOCS_ANSWER = (
-    "죄송합니다. 질문과 관련된 문서를 찾을 수 없습니다. "
-    "다른 질문을 하시거나, 관련 문서를 먼저 업로드해 주세요.\n"
-    "(No relevant documents were found for your question. "
-    "Please try a different question or upload a related document first.)"
-)
 
 # ── Graph state ───────────────────────────────────────────────────────────────
 
@@ -51,12 +45,14 @@ class RAGState(TypedDict, total=False):
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
+@lru_cache(maxsize=1)
 def _llm() -> ChatOpenAI:
     return ChatOpenAI(
         model=config.LLAMA_CPP_MODEL,
         base_url=config.LLAMA_CPP_BASE_URL,
         api_key=config.LLAMA_CPP_API_KEY,
         temperature=0,
+        timeout=config.LLM_TIMEOUT,
     )
 
 
@@ -83,7 +79,7 @@ def generate(state: RAGState) -> dict:
     """
     # No documents → nothing to generate from; skip LLM call
     if not state.get("documents"):
-        return {"answer": _NO_DOCS_ANSWER}
+        return {"answer": NO_DOCS_ANSWER}
 
     context = "\n\n---\n\n".join(doc.page_content for doc in state["documents"])
 
