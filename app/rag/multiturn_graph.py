@@ -29,8 +29,17 @@ from langgraph.graph import END, StateGraph
 
 from app import config
 from app.rag.conversation import Session, conversation_store
-from app.rag.ingestion import get_retriever
+from app.rag.ingestion import get_retriever, retrieve_with_scores
 from app.rag.tracing import trace_node
+
+# ── Constants ─────────────────────────────────────────────────────────────────
+
+_NO_DOCS_ANSWER = (
+    "죄송합니다. 질문과 관련된 문서를 찾을 수 없습니다. "
+    "다른 질문을 하시거나, 관련 문서를 먼저 업로드해 주세요.\n"
+    "(No relevant documents were found for your question. "
+    "Please try a different question or upload a related document first.)"
+)
 
 # ── Graph state ───────────────────────────────────────────────────────────────
 
@@ -180,7 +189,8 @@ def clear_context(state: MultiTurnRAGState) -> dict:
     session.clear()
     return {
         "answer": "대화 맥락이 초기화되었습니다. 새로운 주제로 질문해 주세요! "
-        "(Conversation context has been cleared. Please ask a new question!)",
+        "(Document cache cleared. Conversation history is preserved — "
+        "you can refer back to earlier topics.)",
         "documents": [],
         "grounded": True,
     }
@@ -191,25 +201,25 @@ def clear_context(state: MultiTurnRAGState) -> dict:
 
 @trace_node("retrieve")
 def retrieve(state: MultiTurnRAGState) -> dict:
-    """Fetch relevant documents, merging with session cache for dedup."""
+    """Fetch relevant documents, merging with session cache for dedup.
+
+    Uses score-threshold filtering so that irrelevant chunks are dropped.
+    """
     query = (
         state.get("rewritten_question")
         or state.get("contextualized_query")
         or state["question"]
     )
 
-    retriever = get_retriever()
-    new_docs = retriever.invoke(query)
+    new_docs = retrieve_with_scores(query)
 
     # Merge with session's document cache (정보 중복 처리 최소화)
     session = _get_session(state)
     intent = state.get("intent", "new_topic")
 
     if intent == "follow_up":
-        # Keep previously retrieved docs and add new ones (deduplicated)
         merged = session.update_cached_documents(new_docs)
     else:
-        # New topic: replace cache entirely
         session.cached_documents = new_docs
         merged = new_docs
 
@@ -227,7 +237,14 @@ def generate(state: MultiTurnRAGState) -> dict:
       1. Thinks step-by-step about what the user needs (Chain-of-Thought)
       2. Considers the conversation history for context
       3. Uses ONLY the retrieved documents as its knowledge source
+
+    If no relevant documents were retrieved, returns a canned answer
+    immediately without calling the LLM.
     """
+    # No documents → nothing to generate from; skip LLM call
+    if not state.get("documents"):
+        return {"answer": _NO_DOCS_ANSWER}
+
     context = "\n\n---\n\n".join(doc.page_content for doc in state["documents"])
     history = state.get("chat_history", "")
     question = state["question"]
@@ -270,7 +287,15 @@ def generate(state: MultiTurnRAGState) -> dict:
 
 @trace_node("grade")
 def grade(state: MultiTurnRAGState) -> dict:
-    """Decide whether the answer is grounded in the retrieved documents."""
+    """Decide whether the answer is grounded in the retrieved documents.
+
+    If no documents were retrieved, the answer is automatically marked
+    as grounded (nothing to contradict) and no retry is triggered.
+    """
+    # No documents → nothing to grade against; accept the answer as-is
+    if not state.get("documents"):
+        return {"grounded": True, "retries": state.get("retries", 0) + 1}
+
     prompt = ChatPromptTemplate.from_messages(
         [
             (
@@ -360,10 +385,10 @@ def build_multiturn_rag_graph() -> StateGraph:
                     ↓
                 retrieve
                     ↓
-                generate
+                generate  (no-docs → canned answer, skip LLM)
                     ↓
-                  grade
-                  ├─ save_turn ─→ END  (grounded or max retries)
+                  grade    (no-docs → auto-grounded, skip LLM)
+                  ├─ save_turn ─→ END  (grounded / max retries)
                   └─ rewrite ─→ retrieve  (loop back)
     """
     graph = StateGraph(MultiTurnRAGState)

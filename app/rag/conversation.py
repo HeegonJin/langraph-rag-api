@@ -60,8 +60,12 @@ class Session:
         return [(t.role, t.content) for t in recent]
 
     def clear(self) -> None:
-        """Clear Context – 대화 맥락 초기화."""
-        self.turns.clear()
+        """Clear Context – 대화 맥락 초기화.
+
+        Only resets the document cache and intent; conversation history
+        (turns) is preserved so the agent can recall prior context if
+        the user revisits an earlier topic.
+        """
         self.cached_documents.clear()
         self.last_intent = "new_topic"
 

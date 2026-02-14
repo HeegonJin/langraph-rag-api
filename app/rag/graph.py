@@ -23,8 +23,15 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 
 from app import config
-from app.rag.ingestion import get_retriever
+from app.rag.ingestion import get_retriever, retrieve_with_scores
 from app.rag.tracing import trace_node
+
+_NO_DOCS_ANSWER = (
+    "죄송합니다. 질문과 관련된 문서를 찾을 수 없습니다. "
+    "다른 질문을 하시거나, 관련 문서를 먼저 업로드해 주세요.\n"
+    "(No relevant documents were found for your question. "
+    "Please try a different question or upload a related document first.)"
+)
 
 # ── Graph state ───────────────────────────────────────────────────────────────
 
@@ -58,16 +65,26 @@ def _llm() -> ChatOpenAI:
 
 @trace_node("retrieve")
 def retrieve(state: RAGState) -> dict:
-    """Fetch relevant documents from the vector store."""
+    """Fetch relevant documents from the vector store.
+
+    Uses score-threshold filtering so irrelevant chunks are dropped.
+    """
     query = state.get("rewritten_question") or state["question"]
-    retriever = get_retriever()
-    docs = retriever.invoke(query)
+    docs = retrieve_with_scores(query)
     return {"documents": docs}
 
 
 @trace_node("generate")
 def generate(state: RAGState) -> dict:
-    """Generate an answer grounded in the retrieved documents."""
+    """Generate an answer grounded in the retrieved documents.
+
+    If no relevant documents were retrieved, returns a canned answer
+    immediately without calling the LLM.
+    """
+    # No documents → nothing to generate from; skip LLM call
+    if not state.get("documents"):
+        return {"answer": _NO_DOCS_ANSWER}
+
     context = "\n\n---\n\n".join(doc.page_content for doc in state["documents"])
 
     prompt = ChatPromptTemplate.from_messages(
@@ -90,7 +107,15 @@ def generate(state: RAGState) -> dict:
 
 @trace_node("grade")
 def grade(state: RAGState) -> dict:
-    """Decide whether the answer is grounded in the retrieved documents."""
+    """Decide whether the answer is grounded in the retrieved documents.
+
+    If no documents were retrieved, the answer is automatically marked
+    as grounded (nothing to contradict) and no retry is triggered.
+    """
+    # No documents → nothing to grade against; accept the answer as-is
+    if not state.get("documents"):
+        return {"grounded": True, "retries": state.get("retries", 0) + 1}
+
     prompt = ChatPromptTemplate.from_messages(
         [
             (

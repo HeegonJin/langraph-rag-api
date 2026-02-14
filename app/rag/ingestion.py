@@ -56,3 +56,36 @@ def get_retriever(k: int = 4):
     """Return a retriever backed by the ChromaDB vector store."""
     vectorstore = _get_vectorstore()
     return vectorstore.as_retriever(search_kwargs={"k": k})
+
+
+def retrieve_with_scores(
+    query: str,
+    k: int = 4,
+    threshold: float | None = None,
+) -> list[Document]:
+    """Retrieve documents filtered by a relevance score threshold.
+
+    ChromaDB's ``similarity_search_with_relevance_scores`` returns
+    ``(Document, score)`` pairs where *score* is a similarity value
+    (higher = more relevant).  Documents below *threshold* are dropped.
+
+    Returns an ordinary list of :class:`Document` objects.
+    """
+    from app import config  # local import to avoid circular ref at module level
+
+    if threshold is None:
+        threshold = config.RETRIEVAL_SCORE_THRESHOLD
+
+    vectorstore = _get_vectorstore()
+
+    try:
+        scored_docs = vectorstore.similarity_search_with_relevance_scores(
+            query, k=k,
+        )
+    except Exception:
+        # Fallback: if relevance-score search is unavailable (e.g. empty
+        # collection), return an empty list rather than crash.
+        return []
+
+    # Keep only documents whose similarity score meets the threshold
+    return [doc for doc, score in scored_docs if score >= threshold]

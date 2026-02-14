@@ -21,6 +21,12 @@ CHROMA_PERSIST_DIR: str = os.getenv("CHROMA_PERSIST_DIR", "./chroma_data")
 CHUNK_SIZE: int = int(os.getenv("CHUNK_SIZE", "1000"))
 CHUNK_OVERLAP: int = int(os.getenv("CHUNK_OVERLAP", "200"))
 
+# ── Retrieval ─────────────────────────────────────────────────────────────────
+# Minimum relevance score (0.0–1.0) for a retrieved chunk to be considered.
+# ChromaDB returns cosine *distance* (lower = more similar); we convert to a
+# similarity score internally.  Set to 0.0 to disable threshold filtering.
+RETRIEVAL_SCORE_THRESHOLD: float = float(os.getenv("RETRIEVAL_SCORE_THRESHOLD", "0.4"))
+
 # ── Langfuse observability ────────────────────────────────────────────────────
 LANGFUSE_PUBLIC_KEY: str = os.getenv("LANGFUSE_PUBLIC_KEY", "")
 LANGFUSE_SECRET_KEY: str = os.getenv("LANGFUSE_SECRET_KEY", "")
