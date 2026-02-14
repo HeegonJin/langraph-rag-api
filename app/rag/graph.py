@@ -109,12 +109,17 @@ def generate(state: RAGState) -> dict:
 def grade(state: RAGState) -> dict:
     """Decide whether the answer is grounded in the retrieved documents.
 
-    If no documents were retrieved, the answer is automatically marked
-    as grounded (nothing to contradict) and no retry is triggered.
+    If no documents were retrieved:
+      • First attempt → trigger a rewrite & retry cycle (the rephrased
+        query may find relevant chunks the original missed).
+      • After retry → accept the canned “no docs” answer and stop.
     """
-    # No documents → nothing to grade against; accept the answer as-is
     if not state.get("documents"):
-        return {"grounded": True, "retries": state.get("retries", 0) + 1}
+        retries = state.get("retries", 0)
+        # Allow one rewrite+retry before giving up
+        if retries == 0:
+            return {"grounded": False, "retries": retries + 1}
+        return {"grounded": True, "retries": retries + 1}
 
     prompt = ChatPromptTemplate.from_messages(
         [
