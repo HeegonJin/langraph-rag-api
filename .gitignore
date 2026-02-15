@@ -5,3 +5,4 @@ chroma_data/
 uploads/
 .venv/
 .pytest_cache/
+.pids/

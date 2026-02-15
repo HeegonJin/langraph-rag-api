@@ -28,3 +28,6 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = [
+    "e2e: end-to-end evaluation tests requiring live LLM, embedding, and Redis servers",
+]
