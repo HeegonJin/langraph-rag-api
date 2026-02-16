@@ -14,18 +14,24 @@ LLAMA_CPP_MODEL: str = os.getenv("LLAMA_CPP_MODEL", "default")
 LLAMA_CPP_EMBED_MODEL: str = os.getenv("LLAMA_CPP_EMBED_MODEL", "default")
 LLAMA_CPP_API_KEY: str = os.getenv("LLAMA_CPP_API_KEY", "no-key")
 
-# ── ChromaDB ──────────────────────────────────────────────────────────────────
-CHROMA_PERSIST_DIR: str = os.getenv("CHROMA_PERSIST_DIR", "./chroma_data")
-
-# ── Chunking ──────────────────────────────────────────────────────────────────
-CHUNK_SIZE: int = int(os.getenv("CHUNK_SIZE", "1000"))
-CHUNK_OVERLAP: int = int(os.getenv("CHUNK_OVERLAP", "200"))
+# ── Elasticsearch ─────────────────────────────────────────────────────────────
+ELASTICSEARCH_URL: str = os.getenv("ELASTICSEARCH_URL", "http://localhost:9200")
+ELASTICSEARCH_INDEX: str = os.getenv("ELASTICSEARCH_INDEX", "rag-documents")
 
 # ── Retrieval ─────────────────────────────────────────────────────────────────
-# Minimum relevance score (0.0–1.0) for a retrieved chunk to be considered.
-# ChromaDB returns cosine *distance* (lower = more similar); we convert to a
-# similarity score internally.  Set to 0.0 to disable threshold filtering.
-RETRIEVAL_SCORE_THRESHOLD: float = float(os.getenv("RETRIEVAL_SCORE_THRESHOLD", "0.4"))
+# With Elasticsearch RRF hybrid search, scores are rank-based (1/(k+rank)),
+# not cosine similarity. Set to 0.0 to disable threshold filtering (recommended
+# for RRF — use top-K instead).
+RETRIEVAL_SCORE_THRESHOLD: float = float(os.getenv("RETRIEVAL_SCORE_THRESHOLD", "0.0"))
+
+# ── Docling ───────────────────────────────────────────────────────────────────
+DOCLING_OCR_ENABLED: bool = os.getenv("DOCLING_OCR_ENABLED", "true").lower() in (
+    "1",
+    "true",
+    "yes",
+)
+DOCLING_TABLE_MODE: str = os.getenv("DOCLING_TABLE_MODE", "accurate")  # "accurate" or "fast"
+DOCLING_TIMEOUT: int = int(os.getenv("DOCLING_TIMEOUT", "120"))
 
 # ── LLM timeout ────────────────────────────────────────────────────────────────
 # Seconds to wait for an LLM response before timing out.
