@@ -5,6 +5,7 @@ description = "A toy RAG API built with FastAPI, LangChain, LangGraph, llama.cpp
 requires-python = ">=3.11"
 dependencies = [
     "docling>=2.31",
+    "easyocr>=1.7.2",
     "elasticsearch>=8.17",
     "fastapi[standard]>=0.115,<0.116",
     "langchain>=0.3,<0.4",
