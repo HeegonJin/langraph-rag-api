@@ -21,7 +21,7 @@ tests/
 
 ```bash
 pytest -m "not e2e"                    # Unit tests only (safe, no infra)
-pytest -m e2e                          # E2E (needs llama.cpp:8080/8081 + Redis + ChromaDB)
+pytest -m e2e                          # E2E (needs llama.cpp:8080/8081 + Redis + Elasticsearch)
 pytest tests/test_api.py               # Single file
 pytest tests/test_api.py::TestAskEndpoint::test_ask_success  # Single test
 ```

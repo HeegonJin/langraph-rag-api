@@ -5,10 +5,11 @@ A **RAG (Retrieval-Augmented Generation)** project with **multi-turn conversatio
 | Component | Role |
 |-----------|------|
 | **FastAPI** | HTTP API (single-turn + multi-turn endpoints) |
-| **LangChain** | Document loading, splitting, embeddings, retrieval |
+| **LangChain** | Embeddings, retrieval, Elasticsearch integration |
 | **LangGraph** | Orchestrates the RAG workflow as a stateful graph |
 | **llama.cpp** | Local LLM & embedding server (no API keys needed) |
-| **ChromaDB** | Vector store for document embeddings |
+| **Elasticsearch** | Hybrid search (BM25 + dense vector) for document retrieval |
+| **Docling** | Advanced document parsing (PDF tables, charts, OCR) |
 | **Redis** | Persistent session memory for multi-turn conversations |
 | **Langfuse** | Observability – trace & debug every node's I/O |
 
@@ -71,18 +72,19 @@ A **RAG (Retrieval-Augmented Generation)** project with **multi-turn conversatio
 
 1. **Python 3.11+**
 2. **Redis** – `sudo apt install redis-server` or `brew install redis`
-3. **llama.cpp** – build from source or grab a release from https://github.com/ggerganov/llama.cpp
-4. Download GGUF model files (e.g. from Hugging Face). You need:
+3. **Docker** – for running Elasticsearch
+4. **llama.cpp** – build from source or grab a release from https://github.com/ggerganov/llama.cpp
+5. Download GGUF model files (e.g. from Hugging Face). You need:
    - A **chat model** – we use [GLM-4.7-Flash](https://huggingface.co/unsloth/GLM-4.7-Flash-GGUF) (Q4_K_XL quantisation)
-   - An **embedding model** – we use [Qwen3-Embedding-0.6B](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B-GGUF)
+   - An **embedding model** – we use [BGE-M3](https://huggingface.co/gpustack/bge-m3-GGUF) (GGUF format)
 
 ```bash
 # Download models
-mkdir -p ~/models/GLM-4.7-Flash ~/models/Qwen3-Embedding-0.6B
+mkdir -p ~/models/GLM-4.7-Flash ~/models/bge-m3
 wget -O ~/models/GLM-4.7-Flash/GLM-4.7-Flash-UD-Q4_K_XL.gguf \
     https://huggingface.co/unsloth/GLM-4.7-Flash-GGUF/resolve/main/GLM-4.7-Flash-UD-Q4_K_XL.gguf
-wget -O ~/models/Qwen3-Embedding-0.6B/Qwen3-Embedding-0.6B-Q8_0.gguf \
-    https://huggingface.co/Qwen/Qwen3-Embedding-0.6B-GGUF/resolve/main/Qwen3-Embedding-0.6B-Q8_0.gguf
+wget -O ~/models/bge-m3/bge-m3-Q8_0.gguf \
+    https://huggingface.co/gpustack/bge-m3-GGUF/resolve/main/bge-m3-Q8_0.gguf
 ```
 
 ## Quick Start
@@ -102,7 +104,10 @@ cp .env.example .env
 # 4. Make sure Redis is running
 sudo systemctl start redis-server   # or: redis-server --daemonize yes
 
-# 5. Start all services (llama.cpp chat + embedding + Streamlit demo)
+# 5. Start Elasticsearch
+docker compose up -d
+
+# 6. Start all services (llama.cpp chat + embedding + Streamlit demo)
 bash start.sh
 ```
 
@@ -131,7 +136,7 @@ nohup llama-server \
 
 # Embedding model (port 8081)
 nohup llama-server \
-    --model ~/models/Qwen3-Embedding-0.6B/Qwen3-Embedding-0.6B-Q8_0.gguf \
+    --model ~/models/bge-m3/bge-m3-Q8_0.gguf \
     --ctx-size 8192 \
     --host 0.0.0.0 --port 8081 \
     --embedding \
@@ -213,7 +218,7 @@ langraph-rag-api/
 │       ├── conversation.py  # Redis-backed session memory (ConversationStore)
 │       ├── graph.py         # LangGraph single-turn RAG workflow
 │       ├── multiturn_graph.py  # LangGraph multi-turn RAG workflow
-│       ├── ingestion.py     # Doc loading, splitting, vector store
+│       ├── ingestion.py     # Doc parsing (Docling), chunking, Elasticsearch storage
 │       ├── sample_ingest.py # Auto-ingest sample_data/ on startup
 │       └── tracing.py       # Langfuse observability integration
 ├── tests/
@@ -227,6 +232,7 @@ langraph-rag-api/
 ├── sample_data/             # Sample documents auto-ingested on startup
 ├── demo.py                  # Streamlit web demo (multi-turn)
 ├── start.sh                 # Service management (start/stop/status/logs)
+├── docker-compose.yml       # Elasticsearch service definition
 ├── pyproject.toml
 ├── .env.example
 └── README.md
@@ -234,7 +240,7 @@ langraph-rag-api/
 
 ## Testing
 
-### Unit tests (107 tests, mocked LLM calls)
+### Unit tests (121 tests, mocked LLM calls)
 
 ```bash
 uv run pytest tests/ --ignore=tests/test_eval_e2e.py -v
@@ -246,7 +252,7 @@ The e2e test suite runs the **full agent loop** — retrieval, generation, gradi
 intent classification, and session persistence — then uses the same chat model
 as an automated evaluator to score answers on a 1–5 Likert scale.
 
-**Requirements:** llama.cpp servers on :8080/:8081, Redis on :6379, ChromaDB populated.
+**Requirements:** llama.cpp servers on :8080/:8081, Redis on :6379, Elasticsearch populated.
 
 ```bash
 uv run pytest tests/test_eval_e2e.py -v -s
@@ -325,6 +331,8 @@ Key environment variables (see `.env.example`):
 |----------|---------|-------------|
 | `LLAMA_CPP_BASE_URL` | `http://localhost:8080/v1` | Chat model endpoint |
 | `EMBEDDING_BASE_URL` | `http://localhost:8081/v1` | Embedding model endpoint |
+| `ELASTICSEARCH_URL` | `http://localhost:9200` | Elasticsearch connection URL |
+| `ELASTICSEARCH_INDEX` | `rag-documents` | Elasticsearch index name |
 | `REDIS_URL` | `redis://localhost:6379/0` | Redis connection for session storage |
 | `REDIS_SESSION_TTL` | `3600` | Session expiry in seconds |
 | `MAX_RETRIES` | `3` | Max grounding retries before returning best answer |

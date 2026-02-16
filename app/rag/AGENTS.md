@@ -10,7 +10,7 @@ LangGraph state graphs, document ingestion/retrieval, conversation memory, and L
 rag/
 ├── graph.py            # Single-turn RAG graph (retrieve → generate → grade → rewrite loop)
 ├── multiturn_graph.py  # Multi-turn graph (intent → contextualize → retrieve → generate → grade → save)
-├── ingestion.py        # Document loading, chunking, ChromaDB storage, score-filtered retrieval
+├── ingestion.py        # Document parsing (Docling), chunking (HybridChunker), Elasticsearch storage, score-filtered retrieval
 ├── conversation.py     # Redis-backed session store (Turn, Session, ConversationStore)
 ├── tracing.py          # Langfuse integration (trace_node decorator, invoke_graph_with_tracing)
 ├── constants.py        # Shared constants (NO_DOCS_ANSWER)
@@ -49,8 +49,9 @@ Every node: `def node_name(state: TypedDict) -> dict` decorated with `@trace_nod
 ### Retrieval
 
 - `retrieve_with_scores(query, k=4, threshold)` in `ingestion.py`
-- ChromaDB `similarity_search_with_relevance_scores` → filter by `RETRIEVAL_SCORE_THRESHOLD`
-- Empty collection → returns `[]` (graceful fallback, no crash)
+- Elasticsearch hybrid search (BM25 + dense vector via RRF) using `ElasticsearchStore` with `ApproxRetrievalStrategy(hybrid=True)`
+- Scores are 0.0–1.0 from RRF (not raw cosine); threshold > 0.0 filters low-relevance results
+- Empty index → returns `[]` (graceful fallback, no crash)
 - No docs found → `NO_DOCS_ANSWER` canned response, skip LLM call
 
 ### Session Memory

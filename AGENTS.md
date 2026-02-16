@@ -6,7 +6,7 @@
 
 ## OVERVIEW
 
-Multi-turn RAG API using FastAPI + LangGraph + llama.cpp (local LLM) + ChromaDB + Redis sessions + Langfuse tracing. Bilingual (Korean/English) prompts throughout.
+Multi-turn RAG API using FastAPI + LangGraph + llama.cpp (local LLM) + Elasticsearch + Redis sessions + Langfuse tracing. Bilingual (Korean/English) prompts throughout.
 
 ## STRUCTURE
 
@@ -22,7 +22,8 @@ langraph-rag-api/
 ├── start.sh            # Orchestrates llama.cpp servers + Streamlit
 ├── sample_data/        # Auto-ingested on startup (idempotent)
 ├── uploads/            # Runtime: user-uploaded docs (gitignored)
-└── chroma_data/        # Runtime: ChromaDB persistence (gitignored)
+├── docker-compose.yml  # Elasticsearch service definition
+└── es_data/            # Runtime: Elasticsearch data (gitignored)
 ```
 
 ## WHERE TO LOOK
@@ -37,7 +38,7 @@ langraph-rag-api/
 | Add env config | `app/config.py` + `.env.example` | Always update both |
 | Request/response shapes | `app/models.py` | Pydantic v2 |
 | Run tests (unit) | `pytest -m "not e2e"` | Mocks LLM/vectorstore |
-| Run tests (e2e) | `pytest -m e2e` | Requires llama.cpp + Redis + ChromaDB |
+| Run tests (e2e) | `pytest -m e2e` | Requires llama.cpp + Redis + Elasticsearch |
 
 ## CONVENTIONS
 
@@ -62,6 +63,9 @@ langraph-rag-api/
 ## COMMANDS
 
 ```bash
+# Elasticsearch
+docker compose up -d
+
 # Dev server
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
@@ -78,7 +82,7 @@ uv run mypy app/ demo.py main.py     # type check
 
 # Tests
 uv run pytest -m "not e2e"    # unit tests (no infra needed)
-uv run pytest -m e2e          # e2e (needs llama.cpp:8080/8081 + Redis + ChromaDB)
+uv run pytest -m e2e          # e2e (needs llama.cpp:8080/8081 + Redis + Elasticsearch)
 uv run pytest                 # all tests
 ```
 
@@ -86,7 +90,7 @@ uv run pytest                 # all tests
 
 - `main.py` at repo root is a stub — the real app is `app/main.py`
 - `demo.py` (Streamlit) shares graph/ingestion logic with FastAPI — changes to `app/rag/` affect both
-- Sample data auto-ingested on startup; marker file `chroma_data/.sample_ingested` makes it idempotent
+- Sample data auto-ingested on startup; marker file `uploads/.sample_ingested` makes it idempotent
 - Tests override FastAPI lifespan with no-op to avoid startup side effects
 - Redis DB 15 used by conversation tests for isolation (`flushdb` on setup/teardown)
 - `test_eval_e2e.py` uses LLM-as-judge pattern (782 lines, 34 tests) — expensive to run
