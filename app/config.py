@@ -19,9 +19,8 @@ ELASTICSEARCH_URL: str = os.getenv("ELASTICSEARCH_URL", "http://localhost:9200")
 ELASTICSEARCH_INDEX: str = os.getenv("ELASTICSEARCH_INDEX", "rag-documents")
 
 # ── Retrieval ─────────────────────────────────────────────────────────────────
-# With Elasticsearch RRF hybrid search, scores are rank-based (1/(k+rank)),
-# not cosine similarity. Set to 0.0 to disable threshold filtering (recommended
-# for RRF — use top-K instead).
+# Minimum cosine-similarity score for retrieved documents.
+# Set to 0.0 to disable threshold filtering and rely on top-K only.
 RETRIEVAL_SCORE_THRESHOLD: float = float(os.getenv("RETRIEVAL_SCORE_THRESHOLD", "0.0"))
 
 # ── Docling ───────────────────────────────────────────────────────────────────

@@ -77,7 +77,6 @@ def _get_vectorstore() -> ElasticsearchStore:
         index_name=config.ELASTICSEARCH_INDEX,
         embedding=_get_embeddings(),
         es_url=config.ELASTICSEARCH_URL,
-        strategy=ElasticsearchStore.ApproxRetrievalStrategy(hybrid=True),
     )
 
 
@@ -162,21 +161,18 @@ def retrieve_with_scores(
     k: int = 4,
     threshold: float | None = None,
 ) -> list[Document]:
-    """Retrieve documents using Elasticsearch hybrid search (BM25 + dense vector via RRF)."""
-    from app import config as _config  # local import to avoid circular ref
+    """Retrieve documents using Elasticsearch dense vector search (cosine similarity)."""
+    from app import config as _config
 
     if threshold is None:
         threshold = _config.RETRIEVAL_SCORE_THRESHOLD
 
     vectorstore = _get_vectorstore()
 
-    try:
-        scored_docs = vectorstore.similarity_search_with_relevance_scores(
-            query,
-            k=k,
-        )
-    except Exception:
-        return []
+    scored_docs = vectorstore.similarity_search_with_relevance_scores(
+        query,
+        k=k,
+    )
 
     if threshold > 0.0:
         return [doc for doc, score in scored_docs if score >= threshold]

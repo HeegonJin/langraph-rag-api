@@ -75,38 +75,65 @@ read_pid() {
     [[ -f "$f" ]] && cat "$f" || echo ""
 }
 
+kill_by_pid() {
+    local pid=$1 name=$2
+    info "Stopping $name (PID $pid) ..."
+    kill "$pid" 2>/dev/null
+    for (( i=0; i<5; i++ )); do
+        kill -0 "$pid" 2>/dev/null || return 0
+        sleep 1
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+        warn "Force-killing $name (PID $pid)"
+        kill -9 "$pid" 2>/dev/null || true
+    fi
+}
+
+kill_by_port() {
+    local port=$1 name=$2
+    local pids
+    pids=$(ss -tlnp 2>/dev/null | grep ":${port} " | grep -oP 'pid=\K[0-9]+' | sort -u)
+    if [[ -z "$pids" ]]; then
+        return 1
+    fi
+    for pid in $pids; do
+        kill_by_pid "$pid" "$name"
+    done
+    return 0
+}
+
 kill_service() {
     local name=$1
+    local port=${2:-}
     local pid
     pid=$(read_pid "$name")
+
+    # 1. Try saved PID first
     if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
-        info "Stopping $name (PID $pid) ..."
-        kill "$pid" 2>/dev/null
-        # Wait up to 5 s for graceful exit
-        for (( i=0; i<5; i++ )); do
-            kill -0 "$pid" 2>/dev/null || break
-            sleep 1
-        done
-        # Force-kill if still alive
-        if kill -0 "$pid" 2>/dev/null; then
-            warn "Force-killing $name (PID $pid)"
-            kill -9 "$pid" 2>/dev/null || true
-        fi
+        kill_by_pid "$pid" "$name"
         rm -f "$PID_DIR/$name.pid"
         info "$name stopped"
-    else
-        warn "$name is not running (no PID or process gone)"
-        rm -f "$PID_DIR/$name.pid"
+        return
     fi
+
+    rm -f "$PID_DIR/$name.pid"
+
+    # 2. Fall back to port-based kill
+    if [[ -n "$port" ]] && kill_by_port "$port" "$name"; then
+        info "$name stopped (found via port $port)"
+        return
+    fi
+
+    warn "$name is not running (no PID or process on port)"
 }
 
 # ── Commands ──────────────────────────────────────────────────────────────────
 
 do_stop() {
     info "Stopping all services ..."
-    kill_service "streamlit"
-    kill_service "llama-embed"
-    kill_service "llama-chat"
+    kill_service "streamlit" "$DEMO_PORT"
+    kill_service "llama-embed" "$EMBED_PORT"
+    kill_service "llama-chat" "$CHAT_PORT"
     if command -v docker &>/dev/null; then
         info "Stopping Elasticsearch ..."
         docker compose -f "$SCRIPT_DIR/docker-compose.yml" down >> "$ES_LOG" 2>&1 || true
@@ -120,11 +147,15 @@ do_status() {
     else
         warn "elasticsearch  ─  not running"
     fi
+    declare -A svc_ports=([llama-chat]="$CHAT_PORT" [llama-embed]="$EMBED_PORT" [streamlit]="$DEMO_PORT")
     for svc in llama-chat llama-embed streamlit; do
-        local pid
+        local pid port
         pid=$(read_pid "$svc")
+        port=${svc_ports[$svc]}
         if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
             info "$svc  ─  running (PID $pid)"
+        elif is_port_in_use "$port"; then
+            info "$svc  ─  running (detected on port $port)"
         else
             warn "$svc  ─  not running"
         fi

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import pytest
 from docling_core.transforms.chunker.doc_chunk import DocMeta
 from docling_core.types.doc.labels import DocItemLabel
 from langchain_core.documents import Document
@@ -364,14 +365,14 @@ class TestRetrieveWithScores:
         assert len(results) == 2
 
     @patch("app.rag.ingestion._get_vectorstore")
-    def test_returns_empty_on_exception(self, mock_vs):
-        """Returns empty list when vectorstore raises an exception."""
+    def test_raises_on_exception(self, mock_vs):
+        """Exceptions from vectorstore propagate instead of being silently swallowed."""
         mock_store = MagicMock()
         mock_store.similarity_search_with_relevance_scores.side_effect = RuntimeError("fail")
         mock_vs.return_value = mock_store
 
-        results = retrieve_with_scores("test query")
-        assert results == []
+        with pytest.raises(RuntimeError, match="fail"):
+            retrieve_with_scores("test query")
 
     @patch("app.config.RETRIEVAL_SCORE_THRESHOLD", 0.6)
     @patch("app.rag.ingestion._get_vectorstore")
