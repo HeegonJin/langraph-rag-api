@@ -18,7 +18,6 @@ import logging
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 import redis
 from langchain_core.documents import Document
@@ -65,7 +64,7 @@ class Session:
     created_at: float = field(default_factory=time.time)
 
     # Back-reference to the store so mutation helpers can auto-persist.
-    _store: Optional[ConversationStore] = field(default=None, repr=False)
+    _store: ConversationStore | None = field(default=None, repr=False)
 
     # ── helpers ────────────────────────────────────────────────────────────
 
@@ -143,7 +142,10 @@ def _session_to_json(session: Session) -> dict:
         "session_id": session.session_id,
         "turns": json.dumps([t.to_dict() for t in session.turns]),
         "cached_documents": json.dumps(
-            [{"page_content": d.page_content, "metadata": d.metadata} for d in session.cached_documents]
+            [
+                {"page_content": d.page_content, "metadata": d.metadata}
+                for d in session.cached_documents
+            ]
         ),
         "last_intent": session.last_intent,
         "created_at": str(session.created_at),
@@ -187,9 +189,10 @@ class ConversationStore:
         redis_url: str | None = None,
         ttl_seconds: int = 3600,
     ) -> None:
-        url = redis_url or getattr(config, "REDIS_URL", "redis://localhost:6379/0")
-        self._redis: redis.Redis = redis.Redis.from_url(
-            url, decode_responses=True,
+        url: str = redis_url or str(getattr(config, "REDIS_URL", "redis://localhost:6379/0"))
+        self._redis: redis.Redis[str] = redis.Redis.from_url(
+            url,
+            decode_responses=True,
         )
         self._ttl = ttl_seconds
 

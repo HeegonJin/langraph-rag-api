@@ -28,6 +28,8 @@ from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
+from langgraph.graph.state import CompiledStateGraph
+from pydantic import SecretStr
 
 from app import config
 from app.rag.constants import NO_DOCS_ANSWER
@@ -69,7 +71,7 @@ def _llm(temperature: float = 0) -> ChatOpenAI:
     return ChatOpenAI(
         model=config.LLAMA_CPP_MODEL,
         base_url=config.LLAMA_CPP_BASE_URL,
-        api_key=config.LLAMA_CPP_API_KEY,
+        api_key=SecretStr(config.LLAMA_CPP_API_KEY),
         temperature=temperature,
         timeout=config.LLM_TIMEOUT,
     )
@@ -146,7 +148,7 @@ def classify_intent(state: MultiTurnRAGState) -> dict:
 
     chain = prompt | _llm()
     result = chain.invoke({"history": history, "question": state["question"]})
-    intent_raw = result.content.strip().lower().replace(" ", "_")
+    intent_raw = str(result.content).strip().lower().replace(" ", "_")
 
     # Normalise
     if "clear" in intent_raw:
@@ -198,7 +200,7 @@ def contextualize_query(state: MultiTurnRAGState) -> dict:
 
     chain = prompt | _llm()
     result = chain.invoke({"history": history, "question": question})
-    return {"contextualized_query": result.content.strip()}
+    return {"contextualized_query": str(result.content).strip()}
 
 
 # ── Node: Clear Context (대화 맥락 초기화) ───────────────────────────────────
@@ -228,9 +230,7 @@ def retrieve(state: MultiTurnRAGState) -> dict:
     Uses score-threshold filtering so that irrelevant chunks are dropped.
     """
     query = (
-        state.get("rewritten_question")
-        or state.get("contextualized_query")
-        or state["question"]
+        state.get("rewritten_question") or state.get("contextualized_query") or state["question"]
     )
 
     new_docs = retrieve_with_scores(query)
@@ -344,7 +344,7 @@ def grade(state: MultiTurnRAGState) -> dict:
     chain = prompt | _llm()
     result = chain.invoke({"documents": context, "answer": state["answer"]})
 
-    grounded = "yes" in result.content.strip().lower()
+    grounded = "yes" in str(result.content).strip().lower()
     return {"grounded": grounded, "retries": state.get("retries", 0) + 1}
 
 
@@ -418,7 +418,7 @@ def should_retry(state: MultiTurnRAGState) -> str:
 # ── Build the multi-turn graph ────────────────────────────────────────────────
 
 
-def build_multiturn_rag_graph() -> StateGraph:
+def build_multiturn_rag_graph() -> CompiledStateGraph:
     """
     Graph topology:
 

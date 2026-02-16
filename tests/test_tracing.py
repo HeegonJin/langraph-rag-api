@@ -16,7 +16,6 @@ from app.rag.tracing import (
     trace_node,
 )
 
-
 # ── _summarise_state ──────────────────────────────────────────────────────────
 
 
@@ -200,9 +199,11 @@ class TestInvokeGraphWithTracing:
         mock_graph = MagicMock()
         mock_graph.invoke.return_value = {"answer": "ok", "grounded": True}
 
-        with patch("app.rag.tracing.create_trace", return_value=None), \
-             patch("app.rag.tracing.get_langfuse_handler", return_value=None), \
-             patch("app.rag.tracing.flush"):
+        with (
+            patch("app.rag.tracing.create_trace", return_value=None),
+            patch("app.rag.tracing.get_langfuse_handler", return_value=None),
+            patch("app.rag.tracing.flush"),
+        ):
             from app.rag.tracing import invoke_graph_with_tracing
 
             result = invoke_graph_with_tracing(
@@ -221,9 +222,11 @@ class TestInvokeGraphWithTracing:
         mock_trace = MagicMock()
         mock_trace.id = "trace-123"
 
-        with patch("app.rag.tracing.create_trace", return_value=mock_trace), \
-             patch("app.rag.tracing.get_langfuse_handler", return_value=None), \
-             patch("app.rag.tracing.flush"):
+        with (
+            patch("app.rag.tracing.create_trace", return_value=mock_trace),
+            patch("app.rag.tracing.get_langfuse_handler", return_value=None),
+            patch("app.rag.tracing.flush"),
+        ):
             from app.rag.tracing import invoke_graph_with_tracing
 
             invoke_graph_with_tracing(

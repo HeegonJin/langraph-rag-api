@@ -152,10 +152,10 @@ The API docs will be available at **http://127.0.0.1:8000/docs**.
 A chat-style UI that talks directly to the RAG pipeline (no FastAPI server needed):
 
 ```bash
-uv run streamlit run demo.py --server.address 0.0.0.0 --server.port 8501
+uv run streamlit run demo.py --server.address 0.0.0.0 --server.port 8502
 ```
 
-Open **http://localhost:8501** — upload documents in the sidebar, then chat.
+Open **http://localhost:8502** — upload documents in the sidebar, then chat.
 
 ## Usage
 

@@ -330,8 +330,7 @@ class TestSingleTurnJudged:
             # System declined or gave a generic answer — verify no hallucination
             answer = result["answer"].lower()
             has_fabrication = any(
-                kw in answer
-                for kw in ["3x3 convolution", "batch norm", "relu activation"]
+                kw in answer for kw in ["3x3 convolution", "batch norm", "relu activation"]
             )
             assert not has_fabrication, (
                 f"Decline answer should not hallucinate details: {result['answer'][:200]}"
@@ -355,8 +354,14 @@ class TestOutOfScope:
         no_docs = len(docs) == 0
         disclaimer = _answer_contains_any(
             answer,
-            ["don't have enough information", "cannot answer", "no relevant",
-             "not found", "관련된 문서를 찾을 수 없", NO_DOCS_ANSWER[:30]],
+            [
+                "don't have enough information",
+                "cannot answer",
+                "no relevant",
+                "not found",
+                "관련된 문서를 찾을 수 없",
+                NO_DOCS_ANSWER[:30],
+            ],
         )
         assert no_docs or disclaimer, (
             f"Expected refusal for unrelated question. docs={len(docs)}, answer={answer[:200]}"
@@ -472,9 +477,7 @@ class TestSessionPersistence:
 
         reloaded = conversation_store.get(sid)
         assert reloaded is not None
-        assert len(reloaded.turns) == 0, (
-            f"Expected 0 turns after clear, got {len(reloaded.turns)}"
-        )
+        assert len(reloaded.turns) == 0, f"Expected 0 turns after clear, got {len(reloaded.turns)}"
 
     def test_session_survives_fresh_store_load(self):
         """A new ConversationStore instance should see the same session."""
@@ -488,9 +491,7 @@ class TestSessionPersistence:
         )
         reloaded = store2.get(sid)
         assert reloaded is not None
-        assert len(reloaded.turns) >= 2, (
-            f"Expected >= 2 turns, got {len(reloaded.turns)}"
-        )
+        assert len(reloaded.turns) >= 2, f"Expected >= 2 turns, got {len(reloaded.turns)}"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -513,8 +514,10 @@ class TestSemanticQualityJudged:
         if docs:
             assert_judge_scores(
                 scores,
-                min_relevance=3, min_groundedness=3,
-                min_coherence=3, min_completeness=2,
+                min_relevance=3,
+                min_groundedness=3,
+                min_coherence=3,
+                min_completeness=2,
                 label="english_explanation",
             )
         else:
@@ -542,7 +545,9 @@ class TestSemanticQualityJudged:
         # Completeness may be limited by retrieval coverage
         assert_judge_scores(
             scores,
-            min_relevance=3, min_coherence=3, min_completeness=2,
+            min_relevance=3,
+            min_coherence=3,
+            min_completeness=2,
             label="korean_answer",
         )
 
@@ -557,8 +562,10 @@ class TestSemanticQualityJudged:
         print(f"  Scores: {scores}")
         assert_judge_scores(
             scores,
-            min_relevance=3, min_groundedness=3,
-            min_coherence=3, min_completeness=3,
+            min_relevance=3,
+            min_groundedness=3,
+            min_coherence=3,
+            min_completeness=3,
             label="technical_depth",
         )
 
@@ -577,9 +584,7 @@ class TestSemanticQualityJudged:
         )
         scores = llm_judge(judge_q, answer, _docs_text(result))
         print(f"  Scores: {scores}")
-        assert scores.get("groundedness", 0) >= 3, (
-            f"Author answer may be hallucinated: {scores}"
-        )
+        assert scores.get("groundedness", 0) >= 3, f"Author answer may be hallucinated: {scores}"
 
     def test_no_template_variables_in_answer(self):
         """Answer should never contain raw template variables."""
@@ -660,7 +665,9 @@ class TestExtendedConversationJudged:
         s3 = llm_judge(q3, r3["answer"], _docs_text(r3))
         print(f"  Turn 3 scores: {s3}")
         if s3.get("relevance", 0) >= 3:
-            assert_judge_scores(s3, min_relevance=3, min_coherence=3, min_completeness=2, label="deep_dive_t3")
+            assert_judge_scores(
+                s3, min_relevance=3, min_coherence=3, min_completeness=2, label="deep_dive_t3"
+            )
         else:
             assert len(r3["answer"].strip()) > 10
 
@@ -687,8 +694,11 @@ class TestExtendedConversationJudged:
         # After topic switch, the system should still answer about A2D
         if scores.get("relevance", 0) >= 3:
             assert_judge_scores(
-                scores, min_relevance=3, min_coherence=3,
-                min_completeness=2, label="topic_return",
+                scores,
+                min_relevance=3,
+                min_coherence=3,
+                min_completeness=2,
+                label="topic_return",
             )
         else:
             # LLM declined — accept as long as answer is non-empty
@@ -706,7 +716,9 @@ class TestAPIEndToEnd:
     @pytest.fixture(autouse=True)
     def _client(self):
         from contextlib import asynccontextmanager
+
         from fastapi.testclient import TestClient
+
         from app.main import app
 
         @asynccontextmanager
@@ -733,7 +745,10 @@ class TestAPIEndToEnd:
         scores = llm_judge(q, data["answer"], data.get("source_documents", []))
         print(f"  /ask scores: {scores}")
         assert_judge_scores(
-            scores, min_relevance=3, min_coherence=3, label="api_ask",
+            scores,
+            min_relevance=3,
+            min_coherence=3,
+            label="api_ask",
         )
 
     def test_chat_two_turns_judged(self):
@@ -747,7 +762,8 @@ class TestAPIEndToEnd:
 
         q2 = "How does it handle attention head alignment between teacher and student?"
         r2 = self.client.post(
-            "/chat", json={"question": q2, "session_id": sid},
+            "/chat",
+            json={"question": q2, "session_id": sid},
         )
         assert r2.status_code == 200
         d2 = r2.json()
@@ -758,8 +774,11 @@ class TestAPIEndToEnd:
         # API follow-up: completeness may be limited by retrieval
         if d2.get("source_documents"):
             assert_judge_scores(
-                scores, min_relevance=3, min_coherence=3,
-                min_completeness=2, label="api_chat_t2",
+                scores,
+                min_relevance=3,
+                min_coherence=3,
+                min_completeness=2,
+                label="api_chat_t2",
             )
         else:
             # Accept canned answer when retrieval fails

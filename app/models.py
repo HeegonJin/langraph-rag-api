@@ -1,9 +1,6 @@
 """Pydantic models for request/response schemas."""
 
-from typing import Optional
-
 from pydantic import BaseModel, Field
-
 
 # ── Requests ──────────────────────────────────────────────────────────────────
 
@@ -20,8 +17,10 @@ class ChatRequest(BaseModel):
     If *session_id* is omitted a new session is created automatically.
     """
 
-    question: str = Field(..., min_length=1, examples=["이번 주말에 상영하는 액션 영화 목록을 알려줘"])
-    session_id: Optional[str] = Field(
+    question: str = Field(
+        ..., min_length=1, examples=["이번 주말에 상영하는 액션 영화 목록을 알려줘"]
+    )
+    session_id: str | None = Field(
         default=None,
         description="Conversation session ID. Omit to start a new conversation.",
         examples=["abc123"],

@@ -6,7 +6,7 @@ or vector store is needed.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -20,10 +20,10 @@ from langchain_core.documents import Document
 @pytest.fixture()
 def client():
     """Create a TestClient with lifespan disabled to avoid sample_data ingestion."""
-    from app.main import app
-
     # Override the lifespan to a no-op so tests don't require Redis or sample data
     from contextlib import asynccontextmanager
+
+    from app.main import app
 
     @asynccontextmanager
     async def _noop_lifespan(app):
@@ -149,9 +149,7 @@ class TestClearContext:
             "documents": [],
             "grounded": True,
         }
-        chat_resp = client.post(
-            "/chat", json={"question": "hi", "session_id": "clear-me"}
-        )
+        chat_resp = client.post("/chat", json={"question": "hi", "session_id": "clear-me"})
         session_id = chat_resp.json()["session_id"]
 
         # Now clear it

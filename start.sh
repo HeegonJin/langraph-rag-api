@@ -3,7 +3,7 @@
 # Start all services for the LangGraph RAG project:
 #   1. llama.cpp chat model   (port 8080)
 #   2. llama.cpp embedding model (port 8081)
-#   3. Streamlit web demo     (port 8501)
+#   3. Streamlit web demo     (port 8502)
 #
 # Usage:
 #   ./start.sh          # start all services
@@ -23,7 +23,7 @@ EMBED_MODEL="${EMBED_MODEL:-$HOME/models/Qwen3-Embedding-0.6B-GGUF/Qwen3-Embeddi
 
 CHAT_PORT="${CHAT_PORT:-8080}"
 EMBED_PORT="${EMBED_PORT:-8081}"
-DEMO_PORT="${DEMO_PORT:-8501}"
+DEMO_PORT="${DEMO_PORT:-8502}"
 
 LOG_DIR="$HOME"
 CHAT_LOG="$LOG_DIR/llama-chat.log"

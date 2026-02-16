@@ -5,12 +5,9 @@ Mocks the vector store to avoid needing a running embedding server.
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-from app.rag.ingestion import ingest_file, get_retriever
+from app.rag.ingestion import get_retriever, ingest_file
 
 
 class TestIngestFile:

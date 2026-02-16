@@ -7,7 +7,6 @@ from langchain_core.documents import Document
 
 from app.rag.conversation import ConversationStore, Session, Turn
 
-
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
 
@@ -238,7 +237,8 @@ class TestConversationStore:
     def test_ttl_expiry(self, store):
         """Sessions with a short TTL should expire automatically."""
         short_ttl_store = ConversationStore(
-            redis_url="redis://localhost:6379/15", ttl_seconds=1,
+            redis_url="redis://localhost:6379/15",
+            ttl_seconds=1,
         )
         short_ttl_store.get_or_create("expire-me")
         time.sleep(1.5)

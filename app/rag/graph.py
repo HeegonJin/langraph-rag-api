@@ -21,6 +21,8 @@ from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
+from langgraph.graph.state import CompiledStateGraph
+from pydantic import SecretStr
 
 from app import config
 from app.rag.constants import NO_DOCS_ANSWER
@@ -50,7 +52,7 @@ def _llm() -> ChatOpenAI:
     return ChatOpenAI(
         model=config.LLAMA_CPP_MODEL,
         base_url=config.LLAMA_CPP_BASE_URL,
-        api_key=config.LLAMA_CPP_API_KEY,
+        api_key=SecretStr(config.LLAMA_CPP_API_KEY),
         temperature=0,
         timeout=config.LLM_TIMEOUT,
     )
@@ -133,7 +135,7 @@ def grade(state: RAGState) -> dict:
     chain = prompt | _llm()
     result = chain.invoke({"documents": context, "answer": state["answer"]})
 
-    grounded = "yes" in result.content.strip().lower()
+    grounded = "yes" in str(result.content).strip().lower()
     return {"grounded": grounded, "retries": state.get("retries", 0) + 1}
 
 
@@ -172,7 +174,7 @@ def should_retry(state: RAGState) -> str:
 # ── Build the graph ───────────────────────────────────────────────────────────
 
 
-def build_rag_graph() -> StateGraph:
+def build_rag_graph() -> CompiledStateGraph:
     graph = StateGraph(RAGState)
 
     graph.add_node("retrieve", retrieve)

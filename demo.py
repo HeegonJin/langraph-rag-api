@@ -62,7 +62,7 @@ with st.sidebar:
         ["multi-turn", "single-turn"],
         index=0 if st.session_state.chat_mode == "multi-turn" else 1,
         help="**Multi-turn**: maintains conversation history & intent classification.\n"
-             "**Single-turn**: no history, each question is independent.",
+        "**Single-turn**: no history, each question is independent.",
     )
     if mode != st.session_state.chat_mode:
         st.session_state.chat_mode = mode
@@ -212,9 +212,7 @@ if prompt := st.chat_input("Ask a question about your documents..."):
 
                 answer = result.get("answer", "No answer generated.")
                 intent = result.get("intent", "new_topic")
-                sources = [
-                    doc.page_content[:300] for doc in result.get("documents", [])
-                ]
+                sources = [doc.page_content[:300] for doc in result.get("documents", [])]
                 grounded = result.get("grounded", False)
 
             st.markdown(answer)
@@ -257,9 +255,7 @@ if prompt := st.chat_input("Ask a question about your documents..."):
                 )
 
                 answer = result.get("answer", "No answer generated.")
-                sources = [
-                    doc.page_content[:300] for doc in result.get("documents", [])
-                ]
+                sources = [doc.page_content[:300] for doc in result.get("documents", [])]
                 grounded = result.get("grounded", False)
 
             st.markdown(answer)

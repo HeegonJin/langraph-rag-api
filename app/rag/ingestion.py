@@ -1,12 +1,16 @@
 """Document loading, chunking, and vector-store ingestion."""
 
-from pathlib import Path
+from __future__ import annotations
 
-from langchain_community.document_loaders import TextLoader, PyPDFLoader
+from pathlib import Path
+from typing import Any
+
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from langchain_community.vectorstores import Chroma
 from langchain_core.documents import Document
 from langchain_openai import OpenAIEmbeddings
+from pydantic import SecretStr
 
 from app import config
 
@@ -15,7 +19,7 @@ def _get_embeddings() -> OpenAIEmbeddings:
     return OpenAIEmbeddings(
         model=config.LLAMA_CPP_EMBED_MODEL,
         base_url=config.LLAMA_CPP_EMBED_BASE_URL,
-        api_key=config.LLAMA_CPP_API_KEY,
+        api_key=SecretStr(config.LLAMA_CPP_API_KEY),
     )
 
 
@@ -33,6 +37,7 @@ def ingest_file(file_path: Path) -> int:
     Returns the number of chunks created.
     """
     suffix = file_path.suffix.lower()
+    loader: PyPDFLoader | TextLoader
     if suffix == ".pdf":
         loader = PyPDFLoader(str(file_path))
     else:
@@ -53,7 +58,7 @@ def ingest_file(file_path: Path) -> int:
     return len(chunks)
 
 
-def get_retriever(k: int = 4):
+def get_retriever(k: int = 4) -> Any:
     """Return a retriever backed by the ChromaDB vector store."""
     vectorstore = _get_vectorstore()
     return vectorstore.as_retriever(search_kwargs={"k": k})
@@ -81,7 +86,8 @@ def retrieve_with_scores(
 
     try:
         scored_docs = vectorstore.similarity_search_with_relevance_scores(
-            query, k=k,
+            query,
+            k=k,
         )
     except Exception:
         # Fallback: if relevance-score search is unavailable (e.g. empty

@@ -18,8 +18,8 @@ from __future__ import annotations
 
 import functools
 import logging
-from contextlib import contextmanager
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Any
 
 from app import config
 
@@ -34,13 +34,11 @@ _initialised = False
 def _is_configured() -> bool:
     """Return True when Langfuse is both enabled AND has credentials."""
     return bool(
-        config.LANGFUSE_ENABLED
-        and config.LANGFUSE_PUBLIC_KEY
-        and config.LANGFUSE_SECRET_KEY
+        config.LANGFUSE_ENABLED and config.LANGFUSE_PUBLIC_KEY and config.LANGFUSE_SECRET_KEY
     )
 
 
-def get_langfuse_client():
+def get_langfuse_client() -> Any:
     """Return a shared ``Langfuse`` client, or ``None`` when disabled."""
     global _langfuse_client, _initialised
     if _initialised:
@@ -69,13 +67,13 @@ def get_langfuse_client():
 
 def get_langfuse_handler(
     *,
-    trace_id: Optional[str] = None,
-    session_id: Optional[str] = None,
-    user_id: Optional[str] = None,
-    trace_name: Optional[str] = None,
-    metadata: Optional[dict] = None,
-    tags: Optional[list[str]] = None,
-):
+    trace_id: str | None = None,
+    session_id: str | None = None,
+    user_id: str | None = None,
+    trace_name: str | None = None,
+    metadata: dict | None = None,
+    tags: list[str] | None = None,
+) -> Any:
     """Return a LangChain ``CallbackHandler`` wired to Langfuse.
 
     This handler auto-captures every LLM call, chain run, and retriever call
@@ -112,12 +110,12 @@ def get_langfuse_handler(
 def create_trace(
     *,
     name: str,
-    session_id: Optional[str] = None,
-    user_id: Optional[str] = None,
+    session_id: str | None = None,
+    user_id: str | None = None,
     input: Any = None,
-    metadata: Optional[dict] = None,
-    tags: Optional[list[str]] = None,
-):
+    metadata: dict | None = None,
+    tags: list[str] | None = None,
+) -> Any:
     """Create a new top-level Langfuse trace and return it.
 
     Returns ``None`` when Langfuse is disabled.
@@ -141,7 +139,7 @@ def create_trace(
         return None
 
 
-def flush():
+def flush() -> None:
     """Flush any buffered Langfuse events.
 
     Uses a background thread so the calling request is not blocked.
@@ -150,7 +148,7 @@ def flush():
     if client:
         import threading
 
-        def _do_flush():
+        def _do_flush() -> None:
             try:
                 client.flush()
             except Exception:
@@ -184,9 +182,9 @@ def trace_node(
     invocation (see ``invoke_with_tracing``).
     """
 
-    def decorator(fn: Callable) -> Callable:
+    def decorator(fn: Callable[..., dict[str, Any]]) -> Callable[..., dict[str, Any]]:
         @functools.wraps(fn)
-        def wrapper(state: dict) -> dict:
+        def wrapper(state: dict[str, Any]) -> dict[str, Any]:
             trace = state.get(trace_key)
             if trace is None:
                 # No tracing – just run the node
@@ -224,13 +222,13 @@ def trace_node(
     return decorator
 
 
-def _summarise_state(state: dict, *, for_input: bool = True) -> dict:
+def _summarise_state(state: dict[str, Any], *, for_input: bool = True) -> dict[str, Any]:
     """Create a JSON-safe summary of graph state for Langfuse.
 
     All string values are sent in full (no truncation) so that
     chat_history, answer, etc. are fully visible in the console.
     """
-    summary = {}
+    summary: dict[str, Any] = {}
     for key, value in state.items():
         if key.startswith("_"):
             continue  # skip internal keys like _langfuse_trace
@@ -239,8 +237,7 @@ def _summarise_state(state: dict, *, for_input: bool = True) -> dict:
             summary["documents_count"] = len(docs)
             if docs:
                 summary["documents_preview"] = [
-                    d.page_content if hasattr(d, "page_content") else str(d)
-                    for d in docs
+                    d.page_content if hasattr(d, "page_content") else str(d) for d in docs
                 ]
         elif isinstance(value, (str, int, float, bool)):
             summary[key] = value
@@ -253,22 +250,21 @@ def _summarise_state(state: dict, *, for_input: bool = True) -> dict:
     return summary
 
 
-def _summarise_output(result: dict) -> dict:
+def _summarise_output(result: dict[str, Any]) -> dict[str, Any]:
     """Create a JSON-safe summary of node output for Langfuse.
 
     No truncation is applied — full content is preserved.
     """
     if not isinstance(result, dict):
         return {"raw": str(result)}
-    summary = {}
+    summary: dict[str, Any] = {}
     for key, value in result.items():
         if key == "documents":
             docs = value or []
             summary["documents_count"] = len(docs)
             if docs:
                 summary["documents_preview"] = [
-                    d.page_content if hasattr(d, "page_content") else str(d)
-                    for d in docs
+                    d.page_content if hasattr(d, "page_content") else str(d) for d in docs
                 ]
         elif isinstance(value, (str, int, float, bool)):
             summary[key] = value
@@ -283,14 +279,14 @@ def _summarise_output(result: dict) -> dict:
 
 
 def invoke_graph_with_tracing(
-    graph,
-    state: dict,
+    graph: Any,
+    state: dict[str, Any],
     *,
     trace_name: str,
-    session_id: Optional[str] = None,
-    tags: Optional[list[str]] = None,
-    metadata: Optional[dict] = None,
-) -> dict:
+    session_id: str | None = None,
+    tags: list[str] | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Invoke a LangGraph compiled graph with full Langfuse tracing.
 
     This function:
@@ -331,7 +327,7 @@ def invoke_graph_with_tracing(
     if callbacks:
         config_dict["callbacks"] = callbacks
 
-    result = graph.invoke(state, config=config_dict if config_dict else None)
+    result: dict[str, Any] = graph.invoke(state, config=config_dict if config_dict else None)
 
     # Update trace with final output
     if trace is not None:

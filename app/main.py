@@ -12,10 +12,10 @@ Multi-turn features include:
 
 import asyncio
 import logging
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from pathlib import Path
 
-from fastapi import FastAPI, UploadFile, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile
 from fastapi.responses import RedirectResponse
 
 from app.config import UPLOAD_DIR
@@ -34,7 +34,8 @@ from app.rag.graph import rag_graph
 from app.rag.ingestion import ingest_file
 from app.rag.multiturn_graph import multiturn_rag_graph
 from app.rag.sample_ingest import auto_ingest_sample_data
-from app.rag.tracing import flush as langfuse_flush, invoke_graph_with_tracing
+from app.rag.tracing import flush as langfuse_flush
+from app.rag.tracing import invoke_graph_with_tracing
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Startup / shutdown lifecycle for the FastAPI application."""
     # Startup: auto-ingest sample data (run in thread to avoid blocking)
     await asyncio.to_thread(auto_ingest_sample_data)
@@ -74,7 +75,7 @@ app = FastAPI(
 
 
 @app.get("/", include_in_schema=False)
-async def root():
+async def root() -> RedirectResponse:
     """Redirect to the interactive API docs."""
     return RedirectResponse(url="/docs")
 
@@ -83,7 +84,7 @@ async def root():
 
 
 @app.post("/ingest", response_model=IngestResponse, tags=["documents"])
-async def ingest(file: UploadFile):
+async def ingest(file: UploadFile) -> IngestResponse:
     """Upload a document (.txt, .md, .pdf) and index it for RAG."""
     if file.filename is None:
         raise HTTPException(status_code=400, detail="No filename provided")
@@ -95,7 +96,7 @@ async def ingest(file: UploadFile):
     try:
         num_chunks = ingest_file(dest)
     except Exception as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     return IngestResponse(filename=file.filename, num_chunks=num_chunks)
 
@@ -104,7 +105,7 @@ async def ingest(file: UploadFile):
 
 
 @app.post("/ask", response_model=AnswerResponse, tags=["single-turn"])
-async def ask(body: QuestionRequest):
+async def ask(body: QuestionRequest) -> AnswerResponse:
     """Ask a **single-turn** question about the ingested documents.
 
     This endpoint does *not* maintain conversation history.
@@ -126,9 +127,7 @@ async def ask(body: QuestionRequest):
         metadata={"question": body.question},
     )
 
-    source_snippets = [
-        doc.page_content[:300] for doc in result.get("documents", [])
-    ]
+    source_snippets = [doc.page_content[:300] for doc in result.get("documents", [])]
 
     return AnswerResponse(
         answer=result.get("answer", "No answer generated."),
@@ -140,7 +139,7 @@ async def ask(body: QuestionRequest):
 
 
 @app.post("/chat", response_model=ChatResponse, tags=["multi-turn"])
-async def chat(body: ChatRequest):
+async def chat(body: ChatRequest) -> ChatResponse:
     """Ask a question in a **multi-turn** conversation.
 
     **How it works:**
@@ -189,9 +188,7 @@ async def chat(body: ChatRequest):
         metadata={"question": body.question, "session_id": session.session_id},
     )
 
-    source_snippets = [
-        doc.page_content[:300] for doc in result.get("documents", [])
-    ]
+    source_snippets = [doc.page_content[:300] for doc in result.get("documents", [])]
 
     # Re-load session from Redis to get the updated turn count after save_turn
     updated_session = conversation_store.get(session.session_id)
@@ -211,7 +208,7 @@ async def chat(body: ChatRequest):
     response_model=ClearContextResponse,
     tags=["multi-turn"],
 )
-async def clear_chat_context(body: ClearContextRequest):
+async def clear_chat_context(body: ClearContextRequest) -> ClearContextResponse:
     """Clear the conversation context for a session (대화 맥락 초기화).
 
     After clearing, the next question will be treated as a brand-new topic.
@@ -227,14 +224,14 @@ async def clear_chat_context(body: ClearContextRequest):
 
 
 @app.get("/chat/sessions", response_model=SessionListResponse, tags=["multi-turn"])
-async def list_sessions():
+async def list_sessions() -> SessionListResponse:
     """List all active conversation sessions."""
     sessions = conversation_store.list_sessions()
     return SessionListResponse(sessions=sessions, count=len(sessions))
 
 
 @app.delete("/chat/sessions/{session_id}", tags=["multi-turn"])
-async def delete_session(session_id: str):
+async def delete_session(session_id: str) -> dict[str, str]:
     """Delete a conversation session entirely."""
     found = conversation_store.delete_session(session_id)
     if not found:
@@ -249,5 +246,5 @@ async def delete_session(session_id: str):
 
 
 @app.get("/health", tags=["system"])
-async def health():
+async def health() -> dict[str, str]:
     return {"status": "ok"}
