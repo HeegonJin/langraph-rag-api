@@ -15,10 +15,10 @@ logger = logging.getLogger(__name__)
 def auto_ingest_sample_data() -> None:
     """Ingest files from ``sample_data/`` if not already done.
 
-    Tracks completion via a marker file in ``chroma_data/`` so the
-    operation is idempotent across restarts.
+    Tracks completion via a marker file so the operation is idempotent
+    across restarts.
     """
-    marker = Path("chroma_data/.sample_ingested")
+    marker = Path("uploads/.sample_ingested")
 
     if marker.exists():
         logger.info("Sample data already ingested – skipping")

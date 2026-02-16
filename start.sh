@@ -19,7 +19,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LLAMA_SERVER="${LLAMA_SERVER:-$HOME/llama.cpp/llama-server}"
 
 CHAT_MODEL="${CHAT_MODEL:-$HOME/llama.cpp/unsloth/GLM-4.7-Flash-GGUF/GLM-4.7-Flash-UD-Q4_K_XL.gguf}"
-EMBED_MODEL="${EMBED_MODEL:-$HOME/models/Qwen3-Embedding-0.6B-GGUF/Qwen3-Embedding-0.6B-Q8_0.gguf}"
+EMBED_MODEL="${EMBED_MODEL:-$HOME/models/bge-m3-GGUF/bge-m3-Q8_0.gguf}"
 
 CHAT_PORT="${CHAT_PORT:-8080}"
 EMBED_PORT="${EMBED_PORT:-8081}"
@@ -29,6 +29,7 @@ LOG_DIR="$HOME"
 CHAT_LOG="$LOG_DIR/llama-chat.log"
 EMBED_LOG="$LOG_DIR/llama-embed.log"
 DEMO_LOG="$LOG_DIR/streamlit.log"
+ES_LOG="$LOG_DIR/elasticsearch.log"
 
 # PID files for clean shutdown
 PID_DIR="$SCRIPT_DIR/.pids"
@@ -106,10 +107,19 @@ do_stop() {
     kill_service "streamlit"
     kill_service "llama-embed"
     kill_service "llama-chat"
+    if command -v docker &>/dev/null; then
+        info "Stopping Elasticsearch ..."
+        docker compose -f "$SCRIPT_DIR/docker-compose.yml" down >> "$ES_LOG" 2>&1 || true
+    fi
     info "All services stopped."
 }
 
 do_status() {
+    if command -v docker &>/dev/null && docker compose -f "$SCRIPT_DIR/docker-compose.yml" ps elasticsearch --status running -q 2>/dev/null | grep -q .; then
+        info "elasticsearch  ─  running"
+    else
+        warn "elasticsearch  ─  not running"
+    fi
     for svc in llama-chat llama-embed streamlit; do
         local pid
         pid=$(read_pid "$svc")
@@ -149,6 +159,18 @@ do_start() {
     if ! command -v uv &>/dev/null; then
         error "'uv' is not installed. Run: curl -LsSf https://astral.sh/uv/install.sh | sh"
         exit 1
+    fi
+
+    # ── 0. Elasticsearch ────────────────────────────────────────────────────
+
+    if ! command -v docker &>/dev/null; then
+        warn "docker not found – skipping Elasticsearch (install Docker or start ES manually)"
+    elif docker compose -f "$SCRIPT_DIR/docker-compose.yml" ps elasticsearch --status running -q 2>/dev/null | grep -q .; then
+        warn "Elasticsearch already running – skipping"
+    else
+        info "Starting Elasticsearch via Docker Compose ..."
+        docker compose -f "$SCRIPT_DIR/docker-compose.yml" up -d elasticsearch >> "$ES_LOG" 2>&1
+        wait_for_port 9200 "Elasticsearch" 30
     fi
 
     # ── 1. Chat model server ─────────────────────────────────────────────────
@@ -204,6 +226,7 @@ do_start() {
     echo ""
     info "All services started!"
     echo "  ┌──────────────────────────────────────────────────┐"
+    echo "  │  Elasticsearch       http://localhost:9200       │"
     echo "  │  Chat model server   http://localhost:$CHAT_PORT      │"
     echo "  │  Embedding server    http://localhost:$EMBED_PORT      │"
     echo "  │  Web demo            http://localhost:$DEMO_PORT      │"
