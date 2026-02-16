@@ -64,7 +64,7 @@ app = FastAPI(
         "- 📚 Document deduplication across turns\n"
         "- 🧠 Chain-of-Thought prompting\n"
         "- 🗑️ Explicit context clearing\n\n"
-        "Uses llama.cpp (local LLM), ChromaDB, LangChain & LangGraph."
+        "Uses llama.cpp (local LLM), Elasticsearch, Docling, LangChain & LangGraph."
     ),
     version="0.3.0",
     lifespan=lifespan,

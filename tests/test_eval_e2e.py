@@ -1,7 +1,7 @@
 """End-to-end evaluation test suite for the RAG pipeline — with LLM-as-judge.
 
 Unlike the unit tests that mock LLM calls, these tests run the **full agent
-loop** — retrieval from ChromaDB, LLM generation via llama.cpp, grading, and
+loop** — retrieval from Elasticsearch, LLM generation via llama.cpp, grading, and
 (for multi-turn) intent classification, query contextualisation, and session
 persistence via Redis.
 
@@ -14,7 +14,7 @@ Requirements to run:
   - llama.cpp LLM server on :8080
   - llama.cpp embedding server on :8081
   - Redis on :6379
-  - ChromaDB populated with the A2D paper (sample_data auto-ingest)
+  - Elasticsearch populated with the A2D paper (sample_data auto-ingest)
 
 Run:
     pytest tests/test_eval_e2e.py -v -s
