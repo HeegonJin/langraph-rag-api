@@ -1,17 +1,18 @@
 [project]
 name = "langraph-rag-api"
 version = "0.1.0"
-description = "A toy RAG API built with FastAPI, LangChain, LangGraph, llama.cpp and ChromaDB"
+description = "A toy RAG API built with FastAPI, LangChain, LangGraph, llama.cpp and Elasticsearch"
 requires-python = ">=3.11"
 dependencies = [
-    "chromadb>=0.6,<0.7",
+    "docling>=2.31",
+    "elasticsearch>=8.17",
     "fastapi[standard]>=0.115,<0.116",
     "langchain>=0.3,<0.4",
     "langchain-community>=0.3,<0.4",
+    "langchain-elasticsearch>=0.3",
     "langchain-openai>=0.3,<0.4",
     "langfuse>=2,<3",
     "langgraph>=0.2,<0.3",
-    "pypdf>=6.7.0",
     "python-multipart>=0.0.0,<1",
     "redis>=7.1.1",
     "streamlit>=1.54.0",
@@ -92,10 +93,12 @@ module = [
     "langchain_core.*",
     "langchain_community.*",
     "langchain_openai.*",
+    "langchain_elasticsearch.*",
     "langgraph.*",
     "langfuse.*",
-    "chromadb.*",
+    "docling.*",
+    "docling_core.*",
+    "elasticsearch.*",
     "streamlit.*",
-    "pypdf.*",
 ]
 ignore_missing_imports = true
