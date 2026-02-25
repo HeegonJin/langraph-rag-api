@@ -6,3 +6,4 @@ uploads/
 .venv/
 .pytest_cache/
 .pids/
+.sisyphus/
