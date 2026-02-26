@@ -79,3 +79,9 @@ class SessionListResponse(BaseModel):
 
     sessions: list[str]
     count: int
+
+
+class ClearDocumentsResponse(BaseModel):
+    """Response after clearing all ingested documents."""
+
+    message: str = "All documents cleared successfully"

@@ -15,7 +15,7 @@ import streamlit as st
 from app.config import UPLOAD_DIR
 from app.rag.conversation import conversation_store
 from app.rag.graph import rag_graph
-from app.rag.ingestion import ingest_file
+from app.rag.ingestion import clear_all_documents, ingest_file
 from app.rag.multiturn_graph import multiturn_rag_graph
 from app.rag.sample_ingest import auto_ingest_sample_data
 from app.rag.tracing import invoke_graph_with_tracing
@@ -108,6 +108,9 @@ with st.sidebar:
                 st.rerun()
         with col2:
             if st.button("🆕 New", help="Start a completely new session"):
+                with st.spinner("Clearing documents & starting fresh..."):
+                    clear_all_documents()
+                    auto_ingest_sample_data()
                 session = conversation_store.get_or_create()
                 st.session_state.rag_session_id = session.session_id
                 st.session_state.messages = []

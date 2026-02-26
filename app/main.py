@@ -25,13 +25,14 @@ from app.models import (
     ChatResponse,
     ClearContextRequest,
     ClearContextResponse,
+    ClearDocumentsResponse,
     IngestResponse,
     QuestionRequest,
     SessionListResponse,
 )
 from app.rag.conversation import conversation_store
 from app.rag.graph import rag_graph
-from app.rag.ingestion import ingest_file
+from app.rag.ingestion import clear_all_documents, ingest_file
 from app.rag.multiturn_graph import multiturn_rag_graph
 from app.rag.sample_ingest import auto_ingest_sample_data
 from app.rag.tracing import flush as langfuse_flush
@@ -99,6 +100,18 @@ async def ingest(file: UploadFile) -> IngestResponse:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     return IngestResponse(filename=file.filename, num_chunks=num_chunks)
+
+
+@app.delete("/documents", response_model=ClearDocumentsResponse, tags=["documents"])
+async def clear_documents() -> ClearDocumentsResponse:
+    """Delete **all** ingested documents from Elasticsearch and uploaded files.
+
+    After clearing, ``auto_ingest_sample_data()`` is re-run so the sample
+    documents are available immediately.
+    """
+    await asyncio.to_thread(clear_all_documents)
+    await asyncio.to_thread(auto_ingest_sample_data)
+    return ClearDocumentsResponse()
 
 
 # ── Single-turn (legacy) ─────────────────────────────────────────────────────

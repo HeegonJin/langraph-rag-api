@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import shutil
 from pathlib import Path
 
 from docling.chunking import HybridChunker
@@ -78,6 +79,37 @@ def _get_vectorstore() -> ElasticsearchStore:
         embedding=_get_embeddings(),
         es_url=config.ELASTICSEARCH_URL,
     )
+
+
+def clear_all_documents() -> None:
+    """Delete all documents from the Elasticsearch index and clear uploaded files.
+
+    Removes every document from the configured ES index (without deleting the
+    index itself) and deletes all user-uploaded files from ``UPLOAD_DIR``,
+    including the sample-ingestion marker so that ``auto_ingest_sample_data()``
+    will re-run on the next startup.
+    """
+    from elasticsearch import Elasticsearch
+
+    # 1. Clear Elasticsearch index contents
+    es = Elasticsearch(config.ELASTICSEARCH_URL)
+    index = config.ELASTICSEARCH_INDEX
+    if es.indices.exists(index=index):
+        es.delete_by_query(
+            index=index,
+            body={"query": {"match_all": {}}},
+            refresh=True,
+        )
+        logger.info("Cleared all documents from ES index '%s'", index)
+    else:
+        logger.info("ES index '%s' does not exist – nothing to clear", index)
+
+    # 2. Remove uploaded files (recreate empty directory)
+    upload_dir = config.UPLOAD_DIR
+    if upload_dir.exists():
+        shutil.rmtree(upload_dir)
+        upload_dir.mkdir(exist_ok=True)
+        logger.info("Cleared upload directory '%s'", upload_dir)
 
 
 # ── Ingestion ─────────────────────────────────────────────────────────────────
