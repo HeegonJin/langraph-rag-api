@@ -18,7 +18,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LLAMA_SERVER="${LLAMA_SERVER:-$HOME/llama.cpp/llama-server}"
 
-CHAT_MODEL="${CHAT_MODEL:-$HOME/llama.cpp/unsloth/GLM-4.7-Flash-GGUF/GLM-4.7-Flash-UD-Q4_K_XL.gguf}"
+CHAT_MODEL="${CHAT_MODEL:-$HOME/models/Qwen3.5-35B-A3B/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf}"
 EMBED_MODEL="${EMBED_MODEL:-$HOME/models/bge-m3-GGUF/bge-m3-Q8_0.gguf}"
 
 CHAT_PORT="${CHAT_PORT:-8080}"

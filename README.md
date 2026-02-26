@@ -75,14 +75,14 @@ A **RAG (Retrieval-Augmented Generation)** project with **multi-turn conversatio
 3. **Docker** – for running Elasticsearch
 4. **llama.cpp** – build from source or grab a release from https://github.com/ggerganov/llama.cpp
 5. Download GGUF model files (e.g. from Hugging Face). You need:
-   - A **chat model** – we use [GLM-4.7-Flash](https://huggingface.co/unsloth/GLM-4.7-Flash-GGUF) (Q4_K_XL quantisation)
+   - A **chat model** – we use [Qwen3.5-35B-A3B](https://huggingface.co/unsloth/Qwen3.5-35B-A3B-GGUF) (Q4_K_XL quantisation)
    - An **embedding model** – we use [BGE-M3](https://huggingface.co/gpustack/bge-m3-GGUF) (GGUF format)
 
 ```bash
 # Download models
-mkdir -p ~/models/GLM-4.7-Flash ~/models/bge-m3
-wget -O ~/models/GLM-4.7-Flash/GLM-4.7-Flash-UD-Q4_K_XL.gguf \
-    https://huggingface.co/unsloth/GLM-4.7-Flash-GGUF/resolve/main/GLM-4.7-Flash-UD-Q4_K_XL.gguf
+mkdir -p ~/models/Qwen3.5-35B-A3B ~/models/bge-m3
+wget -O ~/models/Qwen3.5-35B-A3B/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf \
+    https://huggingface.co/unsloth/Qwen3.5-35B-A3B-GGUF/resolve/main/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf
 wget -O ~/models/bge-m3/bge-m3-Q8_0.gguf \
     https://huggingface.co/gpustack/bge-m3-GGUF/resolve/main/bge-m3-Q8_0.gguf
 ```
@@ -127,7 +127,7 @@ If you prefer to start services individually:
 ```bash
 # Chat model (port 8080) – reasoning disabled for faster responses
 nohup llama-server \
-    --model ~/models/GLM-4.7-Flash/GLM-4.7-Flash-UD-Q4_K_XL.gguf \
+    --model ~/models/Qwen3.5-35B-A3B/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf \
     --ctx-size 16384 \
     --host 0.0.0.0 --port 8080 \
     --seed 3407 --temp 0.7 --top-p 1.0 --min-p 0.01 \
